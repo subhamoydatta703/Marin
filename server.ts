@@ -1,4 +1,4 @@
-import { generateAudio } from "./src/Gemini";
+import { generateAudio } from "./src/geminiAnswer";
 
 const server = Bun.serve({
   port: 3000,

@@ -1,12 +1,12 @@
 import { GoogleGenAI } from '@google/genai';
 import { spawn } from 'child_process';
 
-export async function speak(transcript: string): Promise<void> {
+export async function speak(answer: string): Promise<void> {
   const client = new GoogleGenAI({});
 
   const interaction = await client.interactions.create({
     model: "gemini-3.1-flash-tts-preview",
-    input: transcript,
+    input: answer,
     response_format: { type: 'audio' },
     generation_config: {
       speech_config: [{ voice: 'Kore' }]
