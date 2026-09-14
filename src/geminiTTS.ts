@@ -22,14 +22,14 @@ export async function speak(answer: string): Promise<void> {
     input: answer,
     response_format: { type: "audio" },
     generation_config: {
-      speech_config: [{ voice: "Kore" }],
+      speech_config: [{ voice: "Kore", language: "en-In",}],
     },
   });
 
   
   
   const base64Data = interaction.output_audio?.data;
-  console.log("base data", base64Data);
+  
   
   if (!base64Data) {
     console.error("No audio data returned by TTS interaction.");

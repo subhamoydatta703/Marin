@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { error } from "console";
+
+
 import "dotenv/config"
 const GEMINI_STT_API = process.env.GEMIMI_STT_API_KEY
 if(!GEMINI_STT_API){
@@ -16,7 +18,7 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
   }
 
   console.log("Transcribing audio...");
-  try {
+
     const response = await ai.models.generateContent({
       model: "gemini-3.5-transcribe",
       contents: [
@@ -31,6 +33,11 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
           ],
         },
       ],
+      config:{
+        audioTranscriptionConfig:{
+          languageCodes: ["en"]
+        }
+      }
     });
 
     // 1. Check if response.text has it
@@ -49,8 +56,5 @@ export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
     }
 
     return transcript.trim();
-  } catch (error) {
-    console.error("Error inside STT:", error);
-    return "";
   }
-}
+

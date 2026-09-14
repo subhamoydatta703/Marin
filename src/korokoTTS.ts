@@ -1,8 +1,12 @@
 import { KokoroTTS } from "kokoro-js";
 import { spawn } from "child_process";
 
+
+
 // initialization
 let ttsInstance: KokoroTTS | null = null;
+
+
 
 async function getTTS(): Promise<KokoroTTS> {
   if (!ttsInstance) {
@@ -11,18 +15,23 @@ async function getTTS(): Promise<KokoroTTS> {
       "onnx-community/Kokoro-82M-v1.0-ONNX",
       { dtype: "q8" }
     );
+    // Indian English voice validation in kokoro-js
+    (ttsInstance as any)._validate_voice = (v: string) => v.at(0);
   }
   return ttsInstance;
 }
 
-export async function korokoSpeak(answer: string): Promise<void> {
+export async function korokoSpeak(
+  answer: string,
+  voice: "hf_alpha" | "hf_beta" | "hm_omega" | "hm_psi" | string = "hf_alpha"
+): Promise<void> {
   if (!answer || !answer.trim()) return;
 
   const tts = await getTTS();
   
-  // generate audio locally
+  // generate audio locally with Indian female voice
   const audio = await tts.generate(answer, {
-    voice: "af_heart", 
+    voice: voice as any, 
   });
 
   // export to standard WAV buffer
