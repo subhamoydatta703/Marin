@@ -15,7 +15,7 @@ export async function speak(answer: string): Promise<void> {
     console.warn("No text provided to speak.");
     return;
   }
-console.log("no issue in line 18");
+
 
   const interaction = await ai.interactions.create({
     model: "gemini-3.1-flash-tts-preview",
@@ -26,7 +26,7 @@ console.log("no issue in line 18");
     },
   });
 
-  console.log("no issue in line 29");
+  
   
   const base64Data = interaction.output_audio?.data;
   console.log("base data", base64Data);
@@ -42,7 +42,7 @@ console.log("no issue in line 18");
   // On Windows, SoX playback also needs -t waveaudio -d for speakers
   const outputArgs = isWin ? ["-t", "waveaudio", "-d"] : ["-d"];
 
-  console.log("no issue till line 42");
+  
   
 
   await new Promise<void>((resolve, reject) => {
@@ -55,25 +55,23 @@ console.log("no issue in line 18");
       "-",
       ...outputArgs,
     ]);
-console.log("no issue till line 55");
+
 
     player.stdin.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code !== "EPIPE") {
         reject(err);
       }
     });
-    console.log("no issue till line 61");
-    
+
     player.stdin.write(pcmBuffer);
     player.stdin.end();
-    console.log("no issue till line 65");
     
 
     player.on("close", () => resolve());
-    console.log("no issue till line 70");
+    
     
     player.on("error", reject);
-    console.log("no issue till line 73");
+    
     
   });
 }
