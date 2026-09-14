@@ -3,7 +3,7 @@ import { recordAudio } from "./cli";
 import { transcribeAudio } from "./geminiSTT";
 import { generateAnswer } from "./geminiAnswer";
 import { speak } from "./geminiTTS";
-
+import { korokoSpeak } from "./korokoTTS";
 function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const rl = readline.createInterface({
@@ -46,7 +46,18 @@ async function main() {
   console.log(`\nGemini: ${answer}\n`);
 
   console.log("Speaking...");
-  await speak(answer);
+  try {
+    await speak(answer);
+
+  } catch (error) {
+    
+  }
+  try {
+    await korokoSpeak(answer);
+  } catch (error) {
+    console.error(error);
+  }
+  
   console.log("Done.");
 }
 
