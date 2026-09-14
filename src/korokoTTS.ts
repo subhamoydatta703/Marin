@@ -121,7 +121,7 @@ export async function korokoSpeak(answer: string): Promise<void> {
 
     const audio = await tts.generate(part.text, {
       voice: "af_heart",
-      speed: 0.8
+      speed: 0.82
     });
 
     const wavBlob = await audio.toBlob();
