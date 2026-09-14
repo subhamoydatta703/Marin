@@ -61,7 +61,7 @@ try {
 if(text  ==="bye" || text  ==="quit" ){
   console.log("Marin is saying: ");
   
-  await korokoSpeak("bye", "hf_alpha");
+  await korokoSpeak(text);
  break;
 }
 
@@ -79,7 +79,8 @@ if(text  ==="bye" || text  ==="quit" ){
     console.log("No answer could be generated.Say something again!");
     continue;
   }
-  console.log(`\nMarin's text: ${answer}\n`);
+  const displaiText = answer.replace(/\[pause:\d+\]/gi, "")
+  console.log(`\nMarin's text: ${displaiText}\n`);
 
   console.log("Marin is speaking: ");
   try {
@@ -87,7 +88,7 @@ if(text  ==="bye" || text  ==="quit" ){
   } catch (error) {
     console.log("Gemini TTS unavailable, falling back to Kokoro....");
     try {
-      await korokoSpeak(answer, "hf_alpha");
+      await korokoSpeak(answer);
     } catch (fallbackError) {
       console.error("Kokoro TTS playback error:", fallbackError);
     }

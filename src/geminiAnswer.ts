@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { error } from "console";
 import"dotenv/config"
 import { type Message } from "./message";
-import { llmPrompt } from "./llmPrompt";
+import { llmPrompt } from "./marinPrompt";
 const GEMINI_API = process.env.GEMINI_API_KEY
 if(!GEMINI_API){
   console.error("Answer Generation API Key not found");
@@ -26,6 +26,8 @@ export async function generateAnswer(msg: Message[]): Promise<string> {
       }),
       config: {
         systemInstruction: llmPrompt
+      
+
       },
     });
 
