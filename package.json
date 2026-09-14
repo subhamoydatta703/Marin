@@ -3,6 +3,7 @@
     "@google/genai": "^2.22.0",
     "dotenv": "^17.4.2",
     "sarvamai": "1.1.8-alpha.5",
+    "sox": "^0.1.0",
     "zod": "^4.6.4"
   },
   "name": "marin",
