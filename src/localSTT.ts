@@ -7,7 +7,7 @@ async function getTranscriber() {
     transcriberInstance = await pipeline(
       "automatic-speech-recognition",
       "onnx-community/whisper-tiny.en",
-      // 8-bit quantized
+      // auto
       { dtype: "auto" } 
     );
   }

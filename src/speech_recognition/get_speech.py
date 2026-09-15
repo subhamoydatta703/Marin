@@ -9,10 +9,11 @@ sample_rate = 16000 #Hz
 channel = 1
 max_duration = 300
 
-print("Recording start....Press Enter to stop....")
+
 
 # recording happens
 def recording(duration=max_duration,samplerate=sample_rate,channels=channel):
+  print("Recoding started....press enter to stop....")
   start_time = time.time() 
   audio_data = sd.rec(int(duration*samplerate),samplerate=samplerate,channels=channels)
   input()
@@ -40,4 +41,5 @@ def pcm_to_wav_buffer():
     buffer.name = "audio.wav"
     return buffer
 
-print(pcm_to_wav_buffer())
+if __name__ == "__main__":
+    print(pcm_to_wav_buffer())

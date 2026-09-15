@@ -37,3 +37,33 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 .python-version
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python packaging and distributions
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+
+# Audio outputs & temporary recordings
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.pcm
