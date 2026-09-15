@@ -20,7 +20,7 @@ export async function generateAnswer(msg: Message[]): Promise<string> {
   console.log("Marin is thinking the reply for msg:", msg);
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-3.5-flash-lite",
       contents: msg.map((m)=>{
         return {role:m.role,parts:[{text:m.text}]}
       }),
