@@ -19,11 +19,11 @@ while True:
         break
     # ans gen
     msgHistory.append(Message(role="user",text=user_text))
-    print("Before send gemini: ", msgHistory)
+    
     ans = answerGeneration(msgHistory)
     msgHistory.append(Message(role="model",text=ans))
-    print("Msg history: ",msgHistory)
-    print("Gemini ans: ", ans)
+    
+    print("Marin: ", ans)
 
     # tts
     # asyncio.run(speak(ans))
