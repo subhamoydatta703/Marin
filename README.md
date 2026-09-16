@@ -8,70 +8,119 @@ Currently in development...
 
 **Marin** is an interactive, voice-first AI girlfriend designed for natural, real-time spoken conversations. Unlike traditional virtual assistants or rigid chatbots, Marin is built to converse like a real companion—delivering spontaneous reactions, playful banter, genuine emotional nuance, and human-like conversational cadence directly through your microphone and speakers.
 
-Backed by a resilient dual-tier architecture, Marin pairs Google's Gemini models with offline local fallbacks, featuring an acoustic micro-pause engine and multi-turn context memory to make every conversation feel continuous, intimate, and alive.
+Backed by a resilient dual-engine architecture across both Python and TypeScript, Marin pairs Google's Gemini models with CUDA-accelerated local speech models (Whisper STT, Kokoro-82M TTS) and streaming cloud engines (Edge-TTS), featuring multi-turn context memory to make every conversation feel continuous, intimate, and alive.
 
 ---
 
 ## Features
 
-### 1. CLI Voice Pipeline (End-to-End Voice Companion)
+### 1. Python CLI Voice Pipeline (Native CUDA & High Performance)
 
-A complete local and cloud-powered voice pipeline that captures speech from your microphone, transcribes it, queries Gemini for intelligent, emotionally rich conversational responses, and speaks the answer out loud through your speakers.
+An end-to-end, high-performance voice companion pipeline in Python powered by `uv` and PyTorch with CUDA 12.6 acceleration. It captures speech from your microphone, transcribes it locally using Whisper, queries Google Gemini for emotionally nuanced conversational responses, and synthesizes expressive speech back to you.
+
+#### Pipeline Architecture
+
+1. **Microphone Recording (`src/speech_recognition/get_speech.py`)**:
+   - Uses `sounddevice` and `scipy.io.wavfile` to capture 16,000 Hz mono PCM audio directly from your microphone.
+   - Starts recording on launch and trims audio automatically when the user presses `Enter`.
+   - Protects against empty audio buffers and slices exact frame counts without temporary file overhead.
+
+2. **Speech-to-Text (`src/speech_to_text/stt_conversion.py`)**:
+   - High-accuracy local speech transcription powered by Hugging Face `transformers` pipeline (`openai/whisper-small.en`).
+   - Runs directly on GPU with CUDA acceleration (`device="cuda"`), completely offline without third-party STT fees or latency.
+
+3. **Conversational Intelligence & Girlfriend Persona (`src/llm/gemini_answer.py` & `src/llm/llm_prompt.py`)**:
+   - Prompts Google Gemini (`gemini-3.5-flash-lite`) configured with Marin's girlfriend persona system prompt.
+   - **Multi-Turn Context Memory (`src/validation/message.py`)**: Strict Pydantic-validated `Message` model (`role: "user" | "model"`) that preserves continuous chat history across turns.
+   - **Voice Exit Commands**: Built-in voice commands (`"bye"`, `"quit"`, `"exit"`) allow you to end the call naturally.
+
+4. **Text-to-Speech & Acoustic Playback (`src/text_to_speech/`)**:
+   - **Local Kokoro-82M TTS (`src/text_to_speech/koroko_tts.py`)**: High-fidelity neural TTS powered by `kokoro` (`KPipeline` on CUDA). Generates warm, human-like voice synthesis with natural breaths and cadence (`af_heart`, `hf_alpha`, `bf_emma`).
+   - **Real-Time Direct Playback**: Streams audio chunks sentence-by-sentence directly to speakers via `sounddevice` (`sd.play` with `sd.wait()`) with zero disk I/O.
+   - **Cloud Streaming Fallback (`src/text_to_speech/edge_speech.py`)**: Asynchronous Microsoft Edge TTS (`edge-tts`) with expressive voices (`en-IN-NeerjaExpressiveNeural`, `en-US-AvaNeural`), streamed through an `ffplay` pipe.
+
+```mermaid
+flowchart TD
+    subgraph Input ["1. Audio Capture"]
+        Mic[Microphone] -->|16kHz Mono PCM| Rec["sounddevice + scipy (get_speech.py)"]
+    end
+
+    subgraph STT ["2. Speech-to-Text"]
+        Rec --> STT_Whisper["Local Whisper Small on CUDA (stt_conversion.py)"]
+    end
+
+    subgraph Brain ["3. Intelligence & Memory"]
+        STT_Whisper --> Memory["Pydantic Multi-Turn Memory (message.py)"]
+        Memory --> LLM["Gemini 3.5 Flash Lite (gemini_answer.py)"]
+        Prompt["Marin Persona & Prompt Engine (llm_prompt.py)"] --> LLM
+    end
+
+    subgraph TTS ["4. Text-to-Speech Engine"]
+        LLM --> TTS_Kokoro["Kokoro-82M Neural TTS on CUDA (koroko_tts.py)"]
+        LLM -.->|Alternative / Fallback| TTS_Edge["Edge-TTS Expressive (edge_speech.py)"]
+    end
+
+    subgraph Output ["5. Audio Playback"]
+        TTS_Kokoro --> Spk["sounddevice direct playback (sd.play + sd.wait)"]
+        TTS_Edge --> FFPlay["ffplay audio pipe"]
+    end
+```
+
+---
+
+### 2. TypeScript / Bun CLI Voice Pipeline
+
+A parallel TypeScript implementation featuring dual-tier local and cloud models with an acoustic micro-pause engine.
 
 #### Pipeline Architecture
 
 1. **Microphone Recording (`src/cli.ts`)**:
    - Uses SoX (`sox` / `sox.exe`) with cross-platform OS detection (native Windows `waveaudio` support).
    - Records 16-bit 16,000 Hz mono WAV audio directly from the microphone until the user presses `Enter`.
-   - Protects against empty recordings or silence with friendly audio guard prompts.
 
 2. **Speech-to-Text (`src/geminiSTT.ts` & `src/localSTT.ts`)**:
-   - **Primary (Cloud)**: Streams the audio buffer to Google Gemini (`gemini-3.5-transcribe`) with an explicit English language constraint (`languageCodes: ["en"]`).
-   - **Fallback (Local / Offline)**: If Gemini STT is unreachable, seamlessly falls back to an offline Whisper Tiny model (`onnx-community/whisper-tiny.en` via `@huggingface/transformers`), converting 16-bit PCM bytes to normalized Float32 audio locally without API keys or internet access.
+   - **Primary (Cloud)**: Streams the audio buffer to Google Gemini (`gemini-3.5-transcribe`).
+   - **Fallback (Local / Offline)**: Offline Whisper Tiny model (`onnx-community/whisper-tiny.en` via `@huggingface/transformers`).
 
-3. **Conversational Intelligence & Girlfriend Persona (`src/geminiAnswer.ts` & `src/marinPrompt.ts`)**:
-   - Prompts Google Gemini (`gemini-3.1-flash-lite`) configured with Marin's girlfriend persona system prompt.
-   - **Multi-Turn Context Memory (`src/message.ts`)**: Retains ongoing conversation history (`msgHistory`) across turns, allowing Marin to remember context, previous topics, jokes, and reactions throughout your session.
-   - **Voice Exit Commands**: Built-in voice commands (`"bye"`, `"quit"`) allow you to end the call naturally.
+3. **Conversational Intelligence (`src/geminiAnswer.ts` & `src/marinPrompt.ts`)**:
+   - Prompts Google Gemini (`gemini-3.1-flash-lite` / `gemini-3.5-flash-lite`) with Marin's girlfriend persona and multi-turn context memory (`src/message.ts`).
 
 4. **Text-to-Speech & Acoustic Engine (`src/geminiTTS.ts` & `src/korokoTTS.ts`)**:
-   - **Primary (Cloud TTS)**: Gemini Text-to-Speech preview (`gemini-3.1-flash-tts-preview`) using the Interactions API with a natural female Indian-English voice (`Kore`, `en-In`).
-   - **Fallback & Pause Engine (Local Kokoro TTS)**: High-quality offline neural TTS powered by `kokoro-js` (Kokoro-82M ONNX model, `af_heart` voice).
-   - **Acoustic Pause Handling**: `korokoTTS.ts` features a custom speech parser (`parseSpeech`) that splits text into speech segments and pause markers (`[pause:ms]`), introducing asynchronous pauses (`sleep(ms)`) between spoken audio chunks for human-like speech delivery.
-   - **Direct Speaker Playback**: Pipes 24,000 Hz raw audio directly to system speakers via SoX without writing temporary files to disk.
+   - **Primary (Cloud TTS)**: Gemini Text-to-Speech preview (`gemini-3.1-flash-tts-preview`, `Kore` voice).
+   - **Fallback (Local Kokoro ONNX)**: `kokoro-js` with a custom speech parser (`parseSpeech`) supporting asynchronous micro-pauses (`[pause:ms]`).
 
 ```mermaid
 flowchart TD
-    subgraph Input ["1. Audio Capture"]
-        Mic[Microphone] -->|16kHz Mono WAV| SoxRec["SoX Recording Engine (cli.ts)"]
+    subgraph Input_TS ["1. Audio Capture"]
+        Mic_TS[Microphone] -->|16kHz Mono WAV| SoxRec["SoX Recording Engine (cli.ts)"]
     end
 
-    subgraph STT ["2. Speech-to-Text (Dual-Tier)"]
+    subgraph STT_TS ["2. Speech-to-Text (Dual-Tier)"]
         SoxRec --> STT_Gemini["Gemini Cloud STT (gemini-3.5-transcribe)"]
         STT_Gemini -.->|Fallback on error| STT_Local["Offline Whisper Tiny ONNX (localSTT.ts)"]
     end
 
-    subgraph Brain ["3. Intelligence & Memory"]
-        STT_Gemini --> Memory["Multi-Turn Memory (message.ts)"]
-        STT_Local --> Memory
-        Memory --> LLM["Gemini 3.1 Flash Lite (geminiAnswer.ts)"]
-        Prompt["Marin Persona & Prompt Engine (marinPrompt.ts)"] --> LLM
+    subgraph Brain_TS ["3. Intelligence & Memory"]
+        STT_Gemini --> Memory_TS["Multi-Turn Memory (message.ts)"]
+        STT_Local --> Memory_TS
+        Memory_TS --> LLM_TS["Gemini Flash Lite (geminiAnswer.ts)"]
+        Prompt_TS["Marin Persona & Prompt Engine (marinPrompt.ts)"] --> LLM_TS
     end
 
-    subgraph TTS ["4. Text-to-Speech & Acoustic Engine (Dual-Tier)"]
-        LLM --> TTS_Gemini["Gemini TTS Preview (Kore / en-In)"]
-        TTS_Gemini -.->|Fallback on error| TTS_Kokoro["Kokoro-82M ONNX + Pause Engine (korokoTTS.ts)"]
+    subgraph TTS_TS ["4. Text-to-Speech & Acoustic Engine (Dual-Tier)"]
+        LLM_TS --> TTS_Gemini["Gemini TTS Preview (Kore / en-In)"]
+        LLM_TS -.->|Fallback on error| TTS_Kokoro["Kokoro-82M ONNX + Pause Engine (korokoTTS.ts)"]
     end
 
-    subgraph Output ["5. Audio Playback"]
-        TTS_Gemini --> Spk["SoX Audio Stream (Speakers / waveaudio)"]
-        TTS_Kokoro --> Spk
+    subgraph Output_TS ["5. Audio Playback"]
+        TTS_Gemini --> Spk_TS["SoX Audio Stream (Speakers / waveaudio)"]
+        TTS_Kokoro --> Spk_TS
     end
 ```
 
 ---
 
-### 2. Browser Speech-to-Text (STT)
+### 3. Browser Speech-to-Text (STT)
 
 A TypeScript speech-to-text implementation using the browser's native Web Speech API (`SpeechRecognition`). 
 
@@ -99,32 +148,60 @@ No UI, no buttons, no CSS—just pure browser console logs.
 
 ```
 marin/
+├── pyproject.toml              # Python project configuration (uv, CUDA PyTorch, dependencies)
+├── uv.lock                     # Locked Python dependency tree
+├── package.json                # TypeScript project metadata and dependencies
+├── tsconfig.json               # TypeScript configuration
 ├── src/
-│   ├── marinPrompt.ts   # System prompt defining Marin's personality, girlfriend dynamic & speech rules
-│   ├── message.ts       # Multi-turn conversation history state management
-│   ├── main.ts          # Main continuous CLI conversational voice loop
-│   ├── cli.ts           # SoX-based microphone recording (16kHz mono WAV)
-│   ├── geminiAnswer.ts  # Gemini 3.1 Flash Lite response generator
-│   ├── geminiSTT.ts     # Primary Cloud STT via Gemini 3.5 Transcribe
-│   ├── geminiTTS.ts     # Primary Cloud TTS via Gemini Flash TTS (Kore voice)
-│   ├── korokoTTS.ts     # Local Kokoro-82M ONNX TTS with [pause:ms] pause parser
-│   └── localSTT.ts      # Offline fallback STT via ONNX Whisper Tiny
-├── index.html           # Browser Web Speech API interface prototype
-├── server.ts            # Bun HTTP server for the browser prototype
-├── package.json         # Project metadata and dependencies
-└── tsconfig.json        # TypeScript configuration
+│   ├── app.py                  # Main Python continuous voice conversation loop
+│   ├── speech_recognition/
+│   │   └── get_speech.py       # sounddevice microphone capture & PCM trimming
+│   ├── speech_to_text/
+│   │   └── stt_conversion.py   # Hugging Face Whisper-Small STT on CUDA
+│   ├── llm/
+│   │   ├── gemini_answer.py    # Google GenAI Gemini conversational engine
+│   │   └── llm_prompt.py       # Comprehensive Marin persona & voice dynamic prompt
+│   ├── text_to_speech/
+│   │   ├── koroko_tts.py       # High-fidelity Kokoro-82M neural TTS on CUDA
+│   │   └── edge_speech.py      # Cloud streaming Microsoft Edge-TTS with ffplay
+│   ├── validation/
+│   │   └── message.py          # Pydantic Message schema and msgHistory state
+│   ├── main.ts                 # TypeScript continuous CLI conversational voice loop
+│   ├── cli.ts                  # SoX-based microphone recording (16kHz mono WAV)
+│   ├── geminiAnswer.ts         # TypeScript Gemini response generator
+│   ├── geminiSTT.ts            # Primary Cloud STT via Gemini 3.5 Transcribe
+│   ├── geminiTTS.ts            # Primary Cloud TTS via Gemini Flash TTS (Kore voice)
+│   ├── korokoTTS.ts            # TypeScript Kokoro-82M ONNX TTS with pause parser
+│   ├── localSTT.ts             # TypeScript offline fallback STT via ONNX Whisper Tiny
+│   ├── marinPrompt.ts          # TypeScript system prompt
+│   └── message.ts              # TypeScript conversation history interface
+├── index.html                  # Browser Web Speech API interface prototype
+└── server.ts                   # Bun HTTP server for the browser prototype
 ```
 
 ---
 
 ## Prerequisites
 
+### For Python Pipeline (Recommended):
+- Python `3.12` installed.
+- [uv](https://docs.astral.sh/uv/) package manager installed:
+  ```powershell
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
+- An NVIDIA GPU with CUDA support (e.g. RTX 30/40 series) with CUDA 12.4+ drivers.
+- [FFmpeg](https://ffmpeg.org/) (for `ffplay`, if using the Edge-TTS fallback):
+  - Ensure `ffplay` is available in your system `PATH`.
+
+### For TypeScript Pipeline:
 - [Bun](https://bun.sh/) runtime installed.
 - [SoX (Sound eXchange)](https://sourceforge.net/projects/sox/) installed and available in your system `PATH`:
   - **Windows**: Download SoX and ensure `sox.exe` is in your environment `PATH`.
   - **macOS**: `brew install sox`
   - **Linux**: `sudo apt-get install sox libsox-fmt-all`
-- A Google Gemini API Key.
+
+### General:
+- A Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/).
 
 ---
 
@@ -134,24 +211,36 @@ Create a `.env` file in the root directory:
 
 ```env
 GEMINI_API_KEY="your-gemini-api-key"
-GEMIMI_STT_API_KEY="your-gemini-stt-api-key"
-GEMIMI_TTS_API_KEY="your-gemini-tts-api-key"
 ```
 
-*(Note: You can use the same Gemini API key for all three variables if appropriate.)*
+*(Note: For the TypeScript pipeline, you can also set `GEMIMI_STT_API_KEY` and `GEMIMI_TTS_API_KEY` if using separate keys).*
 
 ---
 
 ## Running the CLI Pipeline
 
-Start your conversation with Marin:
+### 1. Run the Python Pipeline (Fastest, Local CUDA)
+
+Install dependencies and start your conversation with Marin:
 
 ```bash
-bun run src/main.ts
+# Sync dependencies and CUDA PyTorch wheels
+uv sync
+
+# Launch the voice loop
+uv run python src/app.py
 ```
 
-1. The terminal displays `Recording... press Enter to stop`.
-2. Speak your message into your microphone.
-3. Press `Enter` on your keyboard.
-4. View the real-time transcript and Marin's answer on your screen while she speaks back to you through your speakers.
-5. Say `"bye"` or `"quit"` anytime to end the conversation.
+1. The terminal displays `Say something.... say 'quit' 'bye' or 'exit' to stop`.
+2. Speak your message into your microphone and press `Enter`.
+3. Whisper transcribes your voice on GPU.
+4. Gemini generates Marin's conversational response.
+5. Kokoro-82M synthesizes natural speech directly to your speakers with human-like cadence.
+6. Say `"bye"`, `"quit"`, or `"exit"` anytime to end the conversation.
+
+### 2. Run the TypeScript Pipeline
+
+```bash
+bun install
+bun run src/main.ts
+```
