@@ -18,6 +18,4 @@ def stt_conversion():
         {"sampling_rate": 16000, "array": audio_array},
 
     )
-    print(result)
-
-stt_conversion()
+    return result

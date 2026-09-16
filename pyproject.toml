@@ -19,12 +19,17 @@ dependencies = [
     "rich>=15.0.0",
     "edge-tts>=7.2.8",
     "pydub>=0.25.1",
-]   
+    "python-dotenv>=1.2.3",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
 
 [[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
+
 
 [project.scripts]
 marin = "marin:main"

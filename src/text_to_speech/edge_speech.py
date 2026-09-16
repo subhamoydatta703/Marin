@@ -5,7 +5,7 @@ import edge_tts
 
 async def speak(text):
     # create Edge TTS
-    communicate = edge_tts.Communicate(text,"en-IN-NeerjaNeural",rate="-10%")
+    communicate = edge_tts.Communicate(text,"en-IN-NeerjaNeural",rate="-3%")
 
     # start ffplay
     process = subprocess.Popen(
@@ -33,6 +33,3 @@ async def speak(text):
     process.wait()
 
 
-asyncio.run(
-    speak("Hey! How are you?")
-)

@@ -1,16 +1,13 @@
-# from kokoro import KPipeline
-# from rich import print
-# import torch
+from kokoro import KPipeline
+import sounddevice as sd
 
-# generator = KPipeline(lang_code='a')
-# def textGeneration(text):
-#     audio = generator(text, voice='af_heart')
-#     for i, (gs, ps, audio) in enumerate(generator):
-#     # print(i, gs, ps)
-#     print(audio(data=audio, rate=24000, autoplay=i==0))
-#     sf.write(f'{i}.wav', audio, 24000)
+# Initialize Kokoro pipeline on CUDA ('a' = American English)
+pipeline = KPipeline(lang_code='b', device='cuda')
+
+def speak_kokoro(text: str, voice: str = "af_heart"):
     
-    
-#     # Export to WAV
+    generator = pipeline(text, voice=voice, speed=0.85)
+    for _, _, audio in generator:
         
-    
+        sd.play(audio, 24000)
+        sd.wait()
