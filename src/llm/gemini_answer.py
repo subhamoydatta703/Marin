@@ -1,15 +1,11 @@
-
-from validation.message import msgHistory
-from dotenv import load_dotenv
-load_dotenv()
-from validation.message import Message
-from llm.llm_prompt import llmPrompt
 from google import genai
-
+from dotenv import load_dotenv
+from validation.message import Message
+load_dotenv()
 
 client = genai.Client()
 
-def answerGeneration(msg:list[Message])-> str:
+def answerGeneration(msg: list[Message], system_prompt: str) -> str:
     if not msg:
         return ""
     history = [
@@ -20,11 +16,9 @@ def answerGeneration(msg:list[Message])-> str:
         for m in msg
     ]   
     interaction = client.interactions.create(
-    model="gemini-3.5-flash-lite",
-    system_instruction=llmPrompt,
-    store=False,
-    input= history)
+        model="gemini-3.6-flash",
+        system_instruction=system_prompt,
+        store=False,
+        input=history
+    )
     return interaction.output_text
-            
-
-

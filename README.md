@@ -8,15 +8,17 @@ Currently in development...
 
 **Marin** is an interactive, voice-first AI girlfriend designed for natural, real-time spoken conversations. Unlike traditional virtual assistants or rigid chatbots, Marin is built to converse like a real companion—delivering spontaneous reactions, playful banter, genuine emotional nuance, and human-like conversational cadence directly through your microphone and speakers.
 
-Backed by a resilient dual-engine architecture across both Python and TypeScript, Marin pairs Google's Gemini models with CUDA-accelerated local speech models (Whisper STT, Kokoro-82M TTS) and streaming cloud engines (Edge-TTS), featuring multi-turn context memory to make every conversation feel continuous, intimate, and alive.
+Marin features a **dynamic mood engine** that shifts her personality each call—clingy, teasing, grumpy, hyper, or quietly affectionate—with voice pitch and pacing that adapt to match. Backed by a dual-engine architecture across both Python and TypeScript, Marin pairs Google's Gemini models with expressive cloud speech synthesis (Edge-TTS) and multi-turn context memory to make every conversation feel continuous, intimate, and alive.
+
+> **Work in Progress** — Marin is under active development. Features, voices, and architecture may change between updates. Contributions and feedback are welcome!
 
 ---
 
 ## Features
 
-### 1. Python CLI Voice Pipeline (Native CUDA & High Performance)
+### 1. Python CLI Voice Pipeline (Primary)
 
-An end-to-end, high-performance voice companion pipeline in Python powered by `uv` and PyTorch with CUDA 12.6 acceleration. It captures speech from your microphone, transcribes it locally using Whisper, queries Google Gemini for emotionally nuanced conversational responses, and synthesizes expressive speech back to you.
+An end-to-end voice companion pipeline in Python powered by `uv`. It captures speech from your microphone, transcribes it locally using Whisper on CUDA, queries Google Gemini for emotionally nuanced conversational responses, and synthesizes expressive speech back to you through Edge-TTS with mood-matched voice tuning.
 
 #### Pipeline Architecture
 
@@ -29,15 +31,22 @@ An end-to-end, high-performance voice companion pipeline in Python powered by `u
    - High-accuracy local speech transcription powered by Hugging Face `transformers` pipeline (`openai/whisper-small.en`).
    - Runs directly on GPU with CUDA acceleration (`device="cuda"`), completely offline without third-party STT fees or latency.
 
-3. **Conversational Intelligence & Girlfriend Persona (`src/llm/gemini_answer.py` & `src/llm/llm_prompt.py`)**:
-   - Prompts Google Gemini (`gemini-3.5-flash-lite`) configured with Marin's girlfriend persona system prompt.
+3. **Dynamic Persona & Mood Engine (`src/llm/marin_persona.py`)**:
+   - Powers Marin's evolving personality with a pool of moods: *clingy, teasing, grumpy, hyper, shy, sleepy, flirty,* and more.
+   - Each call randomly selects a mood, and the system prompt adapts Marin's tone, quirks, and conversational style accordingly.
+   - Maps moods to Edge-TTS voice pitch and rate presets for emotionally consistent speech delivery.
+   - Time-of-day awareness (morning, afternoon, evening, late night) adds contextual realism to her responses.
+
+4. **Conversational Intelligence (`src/llm/gemini_answer.py`)**:
+   - Queries Google Gemini (`gemini-3.6-flash`) with the dynamically generated persona prompt from `marin_persona.py`.
    - **Multi-Turn Context Memory (`src/validation/message.py`)**: Strict Pydantic-validated `Message` model (`role: "user" | "model"`) that preserves continuous chat history across turns.
    - **Voice Exit Commands**: Built-in voice commands (`"bye"`, `"quit"`, `"exit"`) allow you to end the call naturally.
 
-4. **Text-to-Speech & Acoustic Playback (`src/text_to_speech/`)**:
-   - **Local Kokoro-82M TTS (`src/text_to_speech/koroko_tts.py`)**: High-fidelity neural TTS powered by `kokoro` (`KPipeline` on CUDA). Generates warm, human-like voice synthesis with natural breaths and cadence (`af_heart`, `hf_alpha`, `bf_emma`).
-   - **Real-Time Direct Playback**: Streams audio chunks sentence-by-sentence directly to speakers via `sounddevice` (`sd.play` with `sd.wait()`) with zero disk I/O.
-   - **Cloud Streaming Fallback (`src/text_to_speech/edge_speech.py`)**: Asynchronous Microsoft Edge TTS (`edge-tts`) with expressive voices (`en-IN-NeerjaExpressiveNeural`, `en-US-AvaNeural`), streamed through an `ffplay` pipe.
+5. **Text-to-Speech & Acoustic Playback (`src/text_to_speech/edge_speech.py`)**:
+   - Sentence-pipelined Microsoft Edge TTS (`edge-tts`) using the `en-US-AvaMultilingualNeural` voice.
+   - Mood-aware pitch and rate adjustments (e.g., higher pitch when hyper, softer when sleepy) via `MOOD_VOICE_PRESETS`.
+   - Buffers full sentences in memory before piping to `ffplay` for stutter-free playback.
+   - Supports barge-in (interruption) to cancel speech mid-stream.
 
 ```mermaid
 flowchart TD
@@ -49,20 +58,19 @@ flowchart TD
         Rec --> STT_Whisper["Local Whisper Small on CUDA (stt_conversion.py)"]
     end
 
-    subgraph Brain ["3. Intelligence & Memory"]
+    subgraph Brain ["3. Persona & Intelligence"]
         STT_Whisper --> Memory["Pydantic Multi-Turn Memory (message.py)"]
-        Memory --> LLM["Gemini 3.5 Flash Lite (gemini_answer.py)"]
-        Prompt["Marin Persona & Prompt Engine (llm_prompt.py)"] --> LLM
+        Memory --> LLM["Gemini 3.6 Flash (gemini_answer.py)"]
+        Persona["Dynamic Mood Engine (marin_persona.py)"] --> LLM
     end
 
-    subgraph TTS ["4. Text-to-Speech Engine"]
-        LLM --> TTS_Kokoro["Kokoro-82M Neural TTS on CUDA (koroko_tts.py)"]
-        LLM -.->|Alternative / Fallback| TTS_Edge["Edge-TTS Expressive (edge_speech.py)"]
+    subgraph TTS ["4. Mood-Aware TTS"]
+        LLM --> TTS_Edge["Edge-TTS Ava Multilingual (edge_speech.py)"]
+        Persona -.->|pitch & rate presets| TTS_Edge
     end
 
     subgraph Output ["5. Audio Playback"]
-        TTS_Kokoro --> Spk["sounddevice direct playback (sd.play + sd.wait)"]
-        TTS_Edge --> FFPlay["ffplay audio pipe"]
+        TTS_Edge --> FFPlay["ffplay sentence-buffered pipe"]
     end
 ```
 
@@ -153,17 +161,17 @@ marin/
 ├── package.json                # TypeScript project metadata and dependencies
 ├── tsconfig.json               # TypeScript configuration
 ├── src/
-│   ├── app.py                  # Main Python continuous voice conversation loop
+│   ├── app.py                  # Main Python voice conversation loop with mood engine
 │   ├── speech_recognition/
 │   │   └── get_speech.py       # sounddevice microphone capture & PCM trimming
 │   ├── speech_to_text/
 │   │   └── stt_conversion.py   # Hugging Face Whisper-Small STT on CUDA
 │   ├── llm/
-│   │   ├── gemini_answer.py    # Google GenAI Gemini conversational engine
-│   │   └── llm_prompt.py       # Comprehensive Marin persona & voice dynamic prompt
+│   │   ├── gemini_answer.py    # Google Gemini conversational engine (gemini-3.6-flash)
+│   │   ├── llm_prompt.py       # Legacy static persona prompt (reference)
+│   │   └── marin_persona.py    # Dynamic mood engine, persona builder & voice presets
 │   ├── text_to_speech/
-│   │   ├── koroko_tts.py       # High-fidelity Kokoro-82M neural TTS on CUDA
-│   │   └── edge_speech.py      # Cloud streaming Microsoft Edge-TTS with ffplay
+│   │   └── edge_speech.py      # Edge-TTS with sentence pipelining, barge-in & mood presets
 │   ├── validation/
 │   │   └── message.py          # Pydantic Message schema and msgHistory state
 │   ├── main.ts                 # TypeScript continuous CLI conversational voice loop
@@ -190,7 +198,7 @@ marin/
   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
   ```
 - An NVIDIA GPU with CUDA support (e.g. RTX 30/40 series) with CUDA 12.4+ drivers.
-- [FFmpeg](https://ffmpeg.org/) (for `ffplay`, if using the Edge-TTS fallback):
+- [FFmpeg](https://ffmpeg.org/) (for `ffplay`, used by Edge-TTS playback):
   - Ensure `ffplay` is available in your system `PATH`.
 
 ### For TypeScript Pipeline:
@@ -219,7 +227,7 @@ GEMINI_API_KEY="your-gemini-api-key"
 
 ## Running the CLI Pipeline
 
-### 1. Run the Python Pipeline (Fastest, Local CUDA)
+### 1. Run the Python Pipeline (Recommended)
 
 Install dependencies and start your conversation with Marin:
 
@@ -234,8 +242,8 @@ uv run python src/app.py
 1. The terminal displays `Say something.... say 'quit' 'bye' or 'exit' to stop`.
 2. Speak your message into your microphone and press `Enter`.
 3. Whisper transcribes your voice on GPU.
-4. Gemini generates Marin's conversational response.
-5. Kokoro-82M synthesizes natural speech directly to your speakers with human-like cadence.
+4. Gemini generates Marin's conversational response using a dynamic mood-driven persona.
+5. Edge-TTS synthesizes expressive speech with mood-matched pitch and pacing directly to your speakers.
 6. Say `"bye"`, `"quit"`, or `"exit"` anytime to end the conversation.
 
 ### 2. Run the TypeScript Pipeline
