@@ -1,3 +1,5 @@
+
+from speech_and_emotion.speech_and_emotion import get_speech_emotion_text
 import re
 import asyncio
 import datetime
@@ -28,15 +30,16 @@ print(f"Call started with Marin | Mood: {current_mood.upper()} | Time: {time_of_
 
 while True:
     print("Say something.... say 'quit' 'bye' or 'exit' to stop")
-    result = stt_conversion()
-    user_text = result['text']
+    emotion, score, user_text = get_speech_emotion_text()
+    
+    print("Emotion: ", emotion, " Score: ", score)
     print("User: ", user_text)
     cleared_text = re.sub(r'[.!?,]+$', '', user_text.strip().lower())
     if cleared_text == "quit" or cleared_text == "exit" or cleared_text == "bye":
         print("Exiting...")
         break
 
-    msgHistory.append(Message(role="user", text=user_text))
+    msgHistory.append(Message(role="user", text=user_text, emotion_type=emotion, emotion_score=score))
     print("Marin is thinking....")
     ans = answerGeneration(msgHistory, system_prompt=prompt)
     msgHistory.append(Message(role="model", text=ans))

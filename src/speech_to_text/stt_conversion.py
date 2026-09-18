@@ -9,13 +9,13 @@ transcriber = pipeline(
     device="cuda"
 )
 
-def stt_conversion():
-    trimmed_audio = trim_audio()
+def stt_conversion(trimmed_audio= None):
+    if trimmed_audio is None:
+        trimmed_audio = trim_audio()
     if trimmed_audio is None:
         return ""
     audio_array = trimmed_audio.squeeze()
     result = transcriber(
         {"sampling_rate": 16000, "array": audio_array},
-
     )
     return result

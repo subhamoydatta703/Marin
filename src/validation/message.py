@@ -9,5 +9,7 @@ class Message(BaseModel):
     
     role:Literal["user", "model"]
     text:str
+    emotion_type: str | None = None
+    emotion_score: float | None = None
 
 msgHistory: list[Message]=[]

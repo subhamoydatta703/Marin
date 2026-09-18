@@ -8,7 +8,7 @@ Currently in development...
 
 **Marin** is an interactive, voice-first AI girlfriend designed for natural, real-time spoken conversations. Unlike traditional virtual assistants or rigid chatbots, Marin is built to converse like a real companion—delivering spontaneous reactions, playful banter, genuine emotional nuance, and human-like conversational cadence directly through your microphone and speakers.
 
-Marin features a **dynamic mood engine** that shifts her personality each call—clingy, teasing, grumpy, hyper, or quietly affectionate—with voice pitch and pacing that adapt to match. Backed by a dual-engine architecture across both Python and TypeScript, Marin pairs Google's Gemini models with expressive cloud speech synthesis (Edge-TTS) and multi-turn context memory to make every conversation feel continuous, intimate, and alive.
+Marin features a **dynamic mood engine** that shifts her personality each call—clingy, teasing, grumpy, hyper, or quietly affectionate—with voice pitch and pacing that adapt to match. Backed by a dual-engine architecture across both Python and TypeScript, Marin pairs Google's Gemini models with expressive cloud speech synthesis (Edge-TTS), local Speech Emotion Recognition (`emotion2vec`), and multi-turn context memory to make every conversation feel continuous, intimate, and alive.
 
 > **Work in Progress** — Marin is under active development. Features, voices, and architecture may change between updates. Contributions and feedback are welcome!
 
@@ -18,31 +18,41 @@ Marin features a **dynamic mood engine** that shifts her personality each call�
 
 ### 1. Python CLI Voice Pipeline (Primary)
 
-An end-to-end voice companion pipeline in Python powered by `uv`. It captures speech from your microphone, transcribes it locally using Whisper on CUDA, queries Google Gemini for emotionally nuanced conversational responses, and synthesizes expressive speech back to you through Edge-TTS with mood-matched voice tuning.
+An end-to-end voice companion pipeline in Python powered by `uv`. It captures speech from your microphone, transcribes it locally using Whisper on CUDA, detects your vocal emotion using `emotion2vec_plus_large`, queries Google Gemini for emotionally nuanced conversational responses that react to how you sound, and synthesizes expressive speech back to you through Edge-TTS with mood-matched voice tuning.
 
 #### Pipeline Architecture
 
 1. **Microphone Recording (`src/speech_recognition/get_speech.py`)**:
    - Uses `sounddevice` and `scipy.io.wavfile` to capture 16,000 Hz mono PCM audio directly from your microphone.
    - Starts recording on launch and trims audio automatically when the user presses `Enter`.
-   - Protects against empty audio buffers and slices exact frame counts without temporary file overhead.
+   - Converts the audio in-memory to WAV buffers without temporary file overhead on disk.
 
-2. **Speech-to-Text (`src/speech_to_text/stt_conversion.py`)**:
+2. **Unified Audio Dispatcher (`src/speech_and_emotion/speech_and_emotion.py`)**:
+   - Captures speech once from the microphone and dispatches the exact same audio buffer in parallel to both Speech-to-Text and Speech Emotion Recognition.
+   - Eliminates redundant recordings and synchronizes transcription with vocal emotion.
+
+3. **Speech-to-Text (`src/speech_to_text/stt_conversion.py`)**:
    - High-accuracy local speech transcription powered by Hugging Face `transformers` pipeline (`openai/whisper-small.en`).
    - Runs directly on GPU with CUDA acceleration (`device="cuda"`), completely offline without third-party STT fees or latency.
 
-3. **Dynamic Persona & Mood Engine (`src/llm/marin_persona.py`)**:
-   - Powers Marin's evolving personality with a pool of moods: *clingy, teasing, grumpy, hyper, shy, sleepy, flirty,* and more.
-   - Each call randomly selects a mood, and the system prompt adapts Marin's tone, quirks, and conversational style accordingly.
-   - Maps moods to Edge-TTS voice pitch and rate presets for emotionally consistent speech delivery.
-   - Time-of-day awareness (morning, afternoon, evening, late night) adds contextual realism to her responses.
+4. **Speech Emotion Recognition (`src/speech_recognition/emotion.py`)**:
+   - Powered by FunASR's `iic/emotion2vec_plus_large` foundation model on CUDA.
+   - Evaluates acoustic pitch, tone, energy, and speech rate to classify vocal emotion (angry, happy, sad, neutral, surprised, fearful, disgusted) with ranked probability scores.
+   - Silenced internal logging and disabled remote polling for instant offline inference.
 
-4. **Conversational Intelligence (`src/llm/gemini_answer.py`)**:
-   - Queries Google Gemini (`gemini-3.6-flash`) with the dynamically generated persona prompt from `marin_persona.py`.
-   - **Multi-Turn Context Memory (`src/validation/message.py`)**: Strict Pydantic-validated `Message` model (`role: "user" | "model"`) that preserves continuous chat history across turns.
+5. **Dynamic Persona & Mood Engine (`src/llm/marin_persona.py`)**:
+   - Powers Marin's evolving personality with a pool of moods: *clingy, drained, hyper, grumpy, mischievous, distracted, soft, restless.*
+   - Each call randomly selects a mood, and the system prompt adapts Marin's tone, quirks, and conversational style accordingly.
+   - **Vocal Tone Perception**: Listens and reacts naturally to the boyfriend's vocal tone (softens when he sounds sad or drained, matches energy when angry or frustrated, teases when excited).
+   - Voice texturing designed specifically for text-to-speech, banning robotic text sounds (`pfff`, `ugh`, `ugug`) in favor of natural conversational vocalizations (`uuuffff`, `ohhhh`, `okayyyy`).
+   - Time-of-day awareness (morning, afternoon, evening, late night) adds contextual realism.
+
+6. **Conversational Intelligence (`src/llm/gemini_answer.py`)**:
+   - Queries Google Gemini (`gemini-3.5-flash-lite`) with the dynamically generated persona prompt from `marin_persona.py`.
+   - **Multi-Turn Context Memory (`src/validation/message.py`)**: Strict Pydantic-validated `Message` model (`role`, `text`, `emotion_type`, `emotion_score`) preserving continuous chat history and tone tracking across turns.
    - **Voice Exit Commands**: Built-in voice commands (`"bye"`, `"quit"`, `"exit"`) allow you to end the call naturally.
 
-5. **Text-to-Speech & Acoustic Playback (`src/text_to_speech/edge_speech.py`)**:
+7. **Text-to-Speech & Acoustic Playback (`src/text_to_speech/edge_speech.py`)**:
    - Sentence-pipelined Microsoft Edge TTS (`edge-tts`) using the `en-US-AvaMultilingualNeural` voice.
    - Mood-aware pitch and rate adjustments (e.g., higher pitch when hyper, softer when sleepy) via `MOOD_VOICE_PRESETS`.
    - Buffers full sentences in memory before piping to `ffplay` for stutter-free playback.
@@ -50,18 +60,21 @@ An end-to-end voice companion pipeline in Python powered by `uv`. It captures sp
 
 ```mermaid
 flowchart TD
-    subgraph Input ["1. Audio Capture"]
+    subgraph Input ["1. Unified Audio Capture"]
         Mic[Microphone] -->|16kHz Mono PCM| Rec["sounddevice + scipy (get_speech.py)"]
+        Rec --> Dispatcher["Audio Dispatcher (speech_and_emotion.py)"]
     end
 
-    subgraph STT ["2. Speech-to-Text"]
-        Rec --> STT_Whisper["Local Whisper Small on CUDA (stt_conversion.py)"]
+    subgraph Perception ["2. Perception Engine (Parallel)"]
+        Dispatcher -->|Raw Audio Array| STT_Whisper["Whisper Small on CUDA (stt_conversion.py)"]
+        Dispatcher -->|WAV Buffer| SER_Model["emotion2vec+ Large on CUDA (emotion.py)"]
     end
 
     subgraph Brain ["3. Persona & Intelligence"]
-        STT_Whisper --> Memory["Pydantic Multi-Turn Memory (message.py)"]
-        Memory --> LLM["Gemini 3.6 Flash (gemini_answer.py)"]
-        Persona["Dynamic Mood Engine (marin_persona.py)"] --> LLM
+        STT_Whisper -->|User Text| Memory["Pydantic Multi-Turn Memory (message.py)"]
+        SER_Model -->|Vocal Tone + Score| Memory
+        Memory --> LLM["Google Gemini (gemini_answer.py)"]
+        Persona["Dynamic Mood & Vocal Perception (marin_persona.py)"] --> LLM
     end
 
     subgraph TTS ["4. Mood-Aware TTS"]
@@ -156,35 +169,39 @@ No UI, no buttons, no CSS—just pure browser console logs.
 
 ```
 marin/
-├── pyproject.toml              # Python project configuration (uv, CUDA PyTorch, dependencies)
-├── uv.lock                     # Locked Python dependency tree
-├── package.json                # TypeScript project metadata and dependencies
-├── tsconfig.json               # TypeScript configuration
+├── pyproject.toml                     # Python configuration (uv, CUDA PyTorch, FunASR, dependencies)
+├── uv.lock                            # Locked Python dependency tree
+├── package.json                       # TypeScript project metadata and dependencies
+├── tsconfig.json                      # TypeScript configuration
 ├── src/
-│   ├── app.py                  # Main Python voice conversation loop with mood engine
+│   ├── app.py                         # Main Python voice loop with mood & emotion intelligence
+│   ├── speech_and_emotion/
+│   │   └── speech_and_emotion.py      # Unified audio capture dispatcher (STT + emotion2vec)
 │   ├── speech_recognition/
-│   │   └── get_speech.py       # sounddevice microphone capture & PCM trimming
+│   │   ├── get_speech.py              # sounddevice microphone capture & in-memory WAV buffer
+│   │   ├── emotion.py                 # FunASR emotion2vec_plus_large on CUDA
+│   │   └── speech_emotion_detect.py   # Standalone emotion detection testing script
 │   ├── speech_to_text/
-│   │   └── stt_conversion.py   # Hugging Face Whisper-Small STT on CUDA
+│   │   └── stt_conversion.py          # Hugging Face Whisper-Small STT on CUDA
 │   ├── llm/
-│   │   ├── gemini_answer.py    # Google Gemini conversational engine (gemini-3.6-flash)
-│   │   ├── llm_prompt.py       # Legacy static persona prompt (reference)
-│   │   └── marin_persona.py    # Dynamic mood engine, persona builder & voice presets
+│   │   ├── gemini_answer.py           # Google Gemini conversational engine with tone tagging
+│   │   ├── llm_prompt.py              # Legacy static persona prompt (reference)
+│   │   └── marin_persona.py           # Dynamic mood engine, vocal tone perception & voice presets
 │   ├── text_to_speech/
-│   │   └── edge_speech.py      # Edge-TTS with sentence pipelining, barge-in & mood presets
+│   │   └── edge_speech.py             # Edge-TTS with sentence pipelining, barge-in & mood presets
 │   ├── validation/
-│   │   └── message.py          # Pydantic Message schema and msgHistory state
-│   ├── main.ts                 # TypeScript continuous CLI conversational voice loop
-│   ├── cli.ts                  # SoX-based microphone recording (16kHz mono WAV)
-│   ├── geminiAnswer.ts         # TypeScript Gemini response generator
-│   ├── geminiSTT.ts            # Primary Cloud STT via Gemini 3.5 Transcribe
-│   ├── geminiTTS.ts            # Primary Cloud TTS via Gemini Flash TTS (Kore voice)
-│   ├── korokoTTS.ts            # TypeScript Kokoro-82M ONNX TTS with pause parser
-│   ├── localSTT.ts             # TypeScript offline fallback STT via ONNX Whisper Tiny
-│   ├── marinPrompt.ts          # TypeScript system prompt
-│   └── message.ts              # TypeScript conversation history interface
-├── index.html                  # Browser Web Speech API interface prototype
-└── server.ts                   # Bun HTTP server for the browser prototype
+│   │   └── message.py                 # Pydantic Message schema with emotion metadata and history
+│   ├── main.ts                        # TypeScript continuous CLI conversational voice loop
+│   ├── cli.ts                         # SoX-based microphone recording (16kHz mono WAV)
+│   ├── geminiAnswer.ts                # TypeScript Gemini response generator
+│   ├── geminiSTT.ts                   # Primary Cloud STT via Gemini 3.5 Transcribe
+│   ├── geminiTTS.ts                   # Primary Cloud TTS via Gemini Flash TTS (Kore voice)
+│   ├── korokoTTS.ts                   # TypeScript Kokoro-82M ONNX TTS with pause parser
+│   ├── localSTT.ts                    # TypeScript offline fallback STT via ONNX Whisper Tiny
+│   ├── marinPrompt.ts                 # TypeScript system prompt
+│   └── message.ts                     # TypeScript conversation history interface
+├── index.html                         # Browser Web Speech API interface prototype
+└── server.ts                          # Bun HTTP server for the browser prototype
 ```
 
 ---
@@ -235,16 +252,18 @@ Install dependencies and start your conversation with Marin:
 # Sync dependencies and CUDA PyTorch wheels
 uv sync
 
-# Launch the voice loop
+# Launch the voice companion
 uv run python src/app.py
 ```
 
 1. The terminal displays `Say something.... say 'quit' 'bye' or 'exit' to stop`.
 2. Speak your message into your microphone and press `Enter`.
-3. Whisper transcribes your voice on GPU.
-4. Gemini generates Marin's conversational response using a dynamic mood-driven persona.
-5. Edge-TTS synthesizes expressive speech with mood-matched pitch and pacing directly to your speakers.
-6. Say `"bye"`, `"quit"`, or `"exit"` anytime to end the conversation.
+3. In a single microphone capture, the pipeline simultaneously:
+   - Transcribes your spoken words using local Whisper on CUDA.
+   - Evaluates your vocal emotion and confidence score using `emotion2vec_plus_large`.
+4. Gemini processes both your text and your emotional tone, responding in Marin's mood-driven persona.
+5. Edge-TTS synthesizes natural speech with mood-matched pitch and pacing directly through your speakers.
+6. Say `"bye"`, `"quit"`, or `"exit"` anytime to end the call.
 
 ### 2. Run the TypeScript Pipeline
 

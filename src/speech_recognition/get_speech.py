@@ -32,11 +32,12 @@ def trim_audio():
 
   
 # pcm to wav buffer 
-def pcm_to_wav_buffer():
-    trimmed_audio =  trim_audio()
+def pcm_to_wav_buffer(trimmed_audio=None):
+    if trimmed_audio is None:
+        trimmed_audio = trim_audio()
     audio_int16 = (trimmed_audio * 32767).astype(np.int16)
     buffer = io.BytesIO()
-    wavfile.write(buffer,sample_rate,audio_int16)
+    wavfile.write(buffer, sample_rate, audio_int16)
     buffer.seek(0)
     buffer.name = "audio.wav"
     return buffer
