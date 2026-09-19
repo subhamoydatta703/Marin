@@ -2,6 +2,7 @@ import threading
 import re
 import datetime
 import random
+from marin.config import ensure_gemini_api_key
 from speech_and_emotion.speech_and_emotion import get_speech_emotion_text
 from validation.message import Message, msgHistory
 from llm.gemini_answer import answerGeneration
@@ -24,6 +25,7 @@ def speak_in_background(text, rate, pitch):
     t.start()
 
 def main():
+    ensure_gemini_api_key()
     hour = datetime.datetime.now().hour
     time_of_day = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening" if 17 <= hour < 21 else "night"
 
