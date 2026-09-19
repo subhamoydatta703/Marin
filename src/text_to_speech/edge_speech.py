@@ -38,7 +38,7 @@ _proc_lock = threading.Lock()
 
 
 def stop_speaking() -> None:
-    """Cut playback off immediately. Safe to call from any thread (e.g. your VAD)."""
+    # Cut playback off immediately. Safe to call from any thread
     _stop_flag.set()
     with _proc_lock:
         if _active_proc and _active_proc.poll() is None:
@@ -53,9 +53,8 @@ def is_speaking() -> bool:
         return _active_proc is not None and _active_proc.poll() is None
 
 
-# ---------------------------------------------------------------------------
-# Text cleaning
-# ---------------------------------------------------------------------------
+# text cleaning
+
 
 # Abbreviations that must not end a sentence during splitting.
 _ABBREV = r"(?<!\bMr)(?<!\bMrs)(?<!\bMs)(?<!\bDr)(?<!\bSt)(?<!\bvs)(?<!\be\.g)(?<!\bi\.e)"
@@ -117,9 +116,9 @@ def _split_sentences(text: str, min_len: int = 24) -> list[str]:
     return merged
 
 
-# ---------------------------------------------------------------------------
+
 # Synthesis
-# ---------------------------------------------------------------------------
+
 
 
 async def _synthesize(chunk: str, voice: str, rate: str, pitch: str) -> bytes:
@@ -223,9 +222,9 @@ async def _speak_async(text: str, voice: str, rate: str, pitch: str) -> None:
         await producer
 
 
-# ---------------------------------------------------------------------------
+
 # Public API
-# ---------------------------------------------------------------------------
+
 
 
 def speak_edge(
