@@ -5,6 +5,7 @@ colorFrom: purple
 colorTo: blue
 sdk: docker
 app_port: 7860
+suggested_hardware: cpu-basic
 pinned: false
 license: mit
 ---
@@ -197,9 +198,10 @@ Launch the modern, responsive standalone web application:
 
 The live Space serves this React app from FastAPI (`Dockerfile`, port 7860).
 
-1. In the Space: **Settings → Secrets** → `GEMINI_API_KEY`
-2. Push to the Space `main` branch (Docker rebuild)
-3. Open https://huggingface.co/spaces/subhamoy99/marin-ai
+1. In the Space: **Settings → Hardware** → **CPU Basic** (not ZeroGPU — ZeroGPU only works with Gradio)
+2. **Settings → Secrets** → `GEMINI_API_KEY`
+3. Push to the Space `main` branch (Docker rebuild)
+4. Open https://huggingface.co/spaces/subhamoy99/marin-ai
 
 Local Gradio (`uv run python app.py`) is optional and is not what the Space runs.
 
