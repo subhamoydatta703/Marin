@@ -49,10 +49,15 @@ def detect_emotion(trimmed_audio=None):
         disable_pbar=True,
     )
 
+    if not rec_result or not rec_result[0].get("labels"):
+        return {"top_emotion": "neutral", "top_score": 1.0, "ranked": [("neutral", 1.0)]}
+
     emotions = rec_result[0]["labels"]
-    scores = rec_result[0]["scores"]
+    scores = rec_result[0].get("scores") or [0.0] * len(emotions)
 
     ranked = sorted(zip(emotions, scores), key=lambda x: x[1], reverse=True)
+    if not ranked:
+        return {"top_emotion": "neutral", "top_score": 1.0, "ranked": [("neutral", 1.0)]}
     top_emotion, top_score = ranked[0]
 
     return {

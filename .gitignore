@@ -67,3 +67,11 @@ develop-eggs/
 *.flac
 *.ogg
 *.pcm
+
+
+
+/.vscode
+
+# Frontend production build is committed and shipped inside the installable wheel
+!frontend/dist/
+!frontend/dist/**

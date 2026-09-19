@@ -6,6 +6,7 @@ colorTo: blue
 sdk: gradio
 sdk_version: 5.31.0
 app_file: app.py
+python_version: "3.12"
 pinned: false
 license: mit
 ---
@@ -142,11 +143,50 @@ marin/
 
 ## Environment Setup
 
-Create a `.env` file in the project root directory:
+Each person who runs Marin uses **their own** Gemini key. Marin never ships a key in the package.
+
+1. Create a key at [Google AI Studio](https://aistudio.google.com/apikey).
+2. Either:
+   - Copy `.env.example` to `.env` in the project folder and paste the key, or
+   - Run Marin once; it will ask for the key and save it to `~/.marin/.env` (on Windows: `C:\Users\<you>\.marin\.env`).
 
 ```env
-GEMINI_API_KEY="your-gemini-api-key-here"
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
+
+---
+
+## Install as a package
+
+Marin installs as a normal Python package. Requirements for every install:
+**Python 3.12 or 3.13**, [ffmpeg](https://ffmpeg.org/download.html) on PATH, and a microphone.
+
+From this repo (after `uv sync`):
+
+```bash
+uv run marin           # voice call in the terminal (asks for YOUR Gemini key once)
+uv run marin web       # browser UI at http://127.0.0.1:8000
+```
+
+From GitHub (their own machine, their own key) - pip builds the wheel on their
+machine, so `git` plus the requirements above apply:
+
+```bash
+pip install "git+https://github.com/subhamoydatta703/Marin.git@feature/frontend-backend"
+marin        # voice call in the terminal (asks for YOUR Gemini key once)
+marin web    # browser UI at http://127.0.0.1:8000 (the UI ships inside the wheel)
+```
+
+First launch: paste a Gemini key from https://aistudio.google.com/apikey. Marin
+stores it in `~/.marin/.env`. The first run also downloads the Whisper (STT) and
+FunASR emotion models. No NVIDIA GPU? Marin falls back to CPU automatically.
+
+Pip install notes:
+
+- **Python 3.12 or 3.13 only** - pip refuses anything else at install time via `requires-python`.
+- Plan for **~4-7 GB of downloads** (PyTorch + CUDA runtime libraries on Linux).
+- The wheel pins the exact dependency versions from `uv.lock`, so `pip install` and `uv sync` resolve the same tested set; use `uv sync --frozen` for the full bit-for-bit lock.
+- The React UI ships prebuilt as `frontend/dist` inside the wheel. If you change the UI, rebuild and commit it: `cd frontend && npm run build && git add frontend/dist`.
 
 ---
 
@@ -170,33 +210,42 @@ uv run python src/app.py
 - **Barge-In / Interruptions**: If Marin is talking and you want to stop her or change the subject, simply speak over her. She will instantly cut off and listen to your new question.
 - **Voice Exit**: Say `"bye"`, `"quit"`, or `"exit"` at any time to cleanly conclude the session.
 
-### 3. Mode B: Real-Time Web Voice Companion (ChatGPT Voice Mode)
-Launch the full-duplex WebRTC web interface locally:
+### 3. Mode B: Dedicated Full-Stack Voice Website (React + FastAPI)
+Launch the modern, responsive standalone web application:
 
-```bash
-uv run python app.py
-```
-Open `http://localhost:7860` in your browser. 
+1. **Start the FastAPI Backend**:
+   ```bash
+   uv run python server.py
+   ```
+2. **Start the Vite React Frontend (Development)**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   Open `http://localhost:5173` in your browser.
 
-- **ChatGPT Voice Mode Aesthetics**: Immersive centered acoustic orb with fluid concentric ripple waves and dynamic waveform bars.
-- **Hands-Free Full-Duplex WebRTC**: Powered by **FastRTC** and **Silero VAD**. Click **Start Call** once, and speak naturally—no record, pause, or send buttons.
-- **Real-Time Barge-In (Interruption)**: Cut off Marin mid-sentence simply by speaking over her.
-- **Voice Exit**: Speak `"bye"` or `"goodbye"` to conclude the call naturally.
-- **Live Acoustic Telemetry HUD**: Real-time monitoring of vocal sentiment, match confidence, and system state alongside a live subtitle transcript.
+3. **Or Single-Command Production Mode**:
+   ```bash
+   npm --prefix frontend run build
+   uv run python server.py
+   ```
+   Open `http://localhost:8000` in your browser. Both API and UI run seamlessly on a single port.
+
+- **Audio-Reactive Voice Orb**: Concentric animated rings with live Web Audio API frequency waveform bars.
+- **Hands-Free Conversational Loop**: Automatic browser-side VAD, instant barge-in interruption, and live telemetry HUD (`emotion2vec` tone detection + confidence).
+
+### 4. Hugging Face Space (Gradio + ZeroGPU)
+
+This Space hardware is **ZeroGPU**, which only supports the **Gradio** SDK. The public URL therefore runs `app.py`, not the React orb.
+
+React remains the local/web stack: `npm run dev` + `uv run python server.py`, or `npm --prefix frontend run build` then `server.py`.
+
+To put React on Hugging Face later: **Settings → Hardware → CPU Basic** (or a paid GPU), then set README `sdk: docker` again. Docker + ZeroGPU will show `Configuration error`.
 
 ---
 
-## Live Cloud Deployment (Hugging Face Spaces)
+## Live Cloud Deployment
 
-Marin is deployed live on **Hugging Face Spaces**:
+- **Hugging Face Space**: [https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)
+- **Vercel Frontend**: Connect your GitHub repo to Vercel with Root Directory set to `frontend/`.
 
-👉 **[https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)**
-
-Anyone can visit the link on mobile or desktop and talk with Marin hands-free without installing Python or writing any code.
-
-### Deployment Setup:
-1. Add `GEMINI_API_KEY` under **Space Settings $\to$ Variables and secrets**.
-2. Push repository to Hugging Face:
-   ```bash
-   git push hf main
-   ```

@@ -35,7 +35,7 @@ from fastrtc import (
 from speech_to_text.stt_conversion import stt_conversion
 from speech_recognition.emotion import detect_emotion
 from llm.gemini_answer import answerGeneration
-from llm.marin_persona import build_prompt, MOODS, MOOD_VOICE_PRESETS
+from llm.marin_persona import build_prompt, MOODS, MOOD_VOICE_PRESETS, shift_mood
 from validation.message import Message
 
 VOICE = "en-US-AvaMultilingualNeural"
@@ -84,6 +84,18 @@ def process_audio_chunk(audio_16k):
     user_text = stt_info.get("text", "").strip() if isinstance(stt_info, dict) else str(stt_info).strip()
     return user_text, emotion_info
 
+_sticky_mood = {"mood": None}
+
+def resolve_gradio_mood(mood_choice: str) -> str:
+    if mood_choice in MOODS:
+        _sticky_mood["mood"] = mood_choice
+        return mood_choice
+    if _sticky_mood["mood"] in MOODS:
+        return _sticky_mood["mood"]
+    picked = random.choice(list(MOODS))
+    _sticky_mood["mood"] = picked
+    return picked
+
 def conversation_loop(audio: tuple[int, np.ndarray], mood_choice: str, chat_history: list):
     if audio is None:
         return
@@ -117,7 +129,13 @@ def conversation_loop(audio: tuple[int, np.ndarray], mood_choice: str, chat_hist
     cleared_text = re.sub(r'[.!?,]+$', '', user_text.strip().lower())
     is_exit = any(w in cleared_text for w in ["bye", "goodbye", "quit", "exit", "see you"])
 
-    active_mood = mood_choice if mood_choice in MOODS else random.choice(list(MOODS))
+    active_mood = shift_mood(
+        resolve_gradio_mood(mood_choice),
+        user_emotion=top_emotion,
+        emotion_score=top_score,
+        user_text=user_text,
+    )
+    _sticky_mood["mood"] = active_mood
     rate, pitch = MOOD_VOICE_PRESETS.get(active_mood, ("+6%", "+6Hz"))
 
     if is_exit:
@@ -164,6 +182,7 @@ def conversation_loop(audio: tuple[int, np.ndarray], mood_choice: str, chat_hist
         yield (sr, audio_arr[i : i + chunk_size])
 
 def reset_session():
+    _sticky_mood["mood"] = None
     return [], render_status("Neutral", 1.0, "Ready")
 
 CUSTOM_CSS = """

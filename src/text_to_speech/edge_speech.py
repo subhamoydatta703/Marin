@@ -15,7 +15,7 @@ import edge_tts
 DEFAULT_VOICE = "en-US-AvaMultilingualNeural"
 FALLBACK_VOICE = "en-IN-NeerjaExpressiveNeural"
 
-# Voice presets (rate, pitch) matching each mood
+# Voice presets (rate, pitch) matching each mood in llm.marin_persona
 MOOD_VOICE_PRESETS: dict[str, tuple[str, str]] = {
     "clingy": ("+4%", "+8Hz"),
     "drained": ("-8%", "-4Hz"),
@@ -239,8 +239,10 @@ def speak_edge(
 
     Pass `mood` to pull rate/pitch from MOOD_VOICE_PRESETS. Explicit rate/pitch win.
     """
+    if not text or not str(text).strip():
+        return
     if shutil.which("ffplay") is None:
-        raise RuntimeError("ffplay not found. Install ffmpeg.")
+        raise RuntimeError("ffplay not found. Install ffmpeg and add it to PATH.")
 
     preset_rate, preset_pitch = MOOD_VOICE_PRESETS.get(mood or "", (BASE_RATE, BASE_PITCH))
     rate = rate or preset_rate

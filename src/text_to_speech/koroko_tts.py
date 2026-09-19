@@ -15,11 +15,12 @@ break the prosody or cause unnatural pauses.
 """
 
 import re
+import torch
 from kokoro import KPipeline
 import sounddevice as sd
 
-# American English, CUDA — loaded once at import time
-pipeline = KPipeline(lang_code='a', device='cuda')
+# American English — CUDA when available, otherwise CPU
+pipeline = KPipeline(lang_code='a', device="cuda" if torch.cuda.is_available() else "cpu")
 
 
 def _clean_for_speech(text: str) -> str:

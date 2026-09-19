@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from interruption.voice_interuption import get_voice_input
 from speech_to_text.stt_conversion import stt_conversion
 from speech_recognition.emotion import detect_emotion
+from validation.emotion_label import clean_emotion
 
 executor = ThreadPoolExecutor(max_workers=2)
 
@@ -13,7 +14,21 @@ def get_speech_emotion_text():
     future_emotion = executor.submit(detect_emotion, user_audio)
     future_stt = executor.submit(stt_conversion, user_audio)
 
-    emotion = future_emotion.result()
-    result = future_stt.result()
+    try:
+        emotion = future_emotion.result()
+    except Exception:
+        emotion = {"top_emotion": "neutral", "top_score": 1.0}
 
-    return emotion["top_emotion"], emotion["top_score"], result['text']
+    try:
+        result = future_stt.result()
+    except Exception:
+        result = {"text": ""}
+
+    if not isinstance(result, dict):
+        result = {"text": str(result or "")}
+
+    return (
+        clean_emotion(emotion.get("top_emotion") if isinstance(emotion, dict) else None),
+        (emotion.get("top_score") if isinstance(emotion, dict) else None),
+        result.get("text") or "",
+    )
