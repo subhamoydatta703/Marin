@@ -46,6 +46,64 @@ MOOD_VOICE_PRESETS = {
     "restless":    ("+6%",  "+4Hz"),
 }
 
+# How his vocal emotion can move her mood. Same speaker; only rate/pitch + prompt change.
+_EMOTION_TO_MOOD = {
+    "angry": "grumpy",
+    "disgusted": "grumpy",
+    "sad": "soft",
+    "fearful": "soft",
+    "happy": "clingy",
+    "surprised": "hyper",
+}
+
+_RUDE_PHRASES = (
+    "shut up",
+    "shut your",
+    "stupid",
+    "idiot",
+    "dumb",
+    "you suck",
+    "hate you",
+    "i hate you",
+    "ugly",
+    "worthless",
+    "loser",
+    "pathetic",
+    "nobody likes you",
+    "go die",
+    "kill yourself",
+    "disgusting",
+)
+
+_EMOTION_SHIFT_MIN_SCORE = 0.45
+
+
+def text_is_rude(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(phrase in lowered for phrase in _RUDE_PHRASES)
+
+
+def shift_mood(
+    current: str,
+    user_emotion: str | None = None,
+    emotion_score: float | None = None,
+    user_text: str = "",
+) -> str:
+    """Keep the current mood unless his tone or wording gives a reason to move."""
+    from validation.emotion_label import clean_emotion
+
+    current = current if current in MOODS else random.choice(list(MOODS))
+    if text_is_rude(user_text):
+        return "grumpy"
+
+    score = float(emotion_score or 0)
+    if score < _EMOTION_SHIFT_MIN_SCORE:
+        return current
+
+    target = _EMOTION_TO_MOOD.get(clean_emotion(user_emotion))
+    return target if target else current
+
+
 # Persona prompt template
 PROMPT_TEMPLATE = """
 You are Marin. You're on a voice call with your boyfriend.

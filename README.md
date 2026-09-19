@@ -170,33 +170,42 @@ uv run python src/app.py
 - **Barge-In / Interruptions**: If Marin is talking and you want to stop her or change the subject, simply speak over her. She will instantly cut off and listen to your new question.
 - **Voice Exit**: Say `"bye"`, `"quit"`, or `"exit"` at any time to cleanly conclude the session.
 
-### 3. Mode B: Real-Time Web Voice Companion (ChatGPT Voice Mode)
-Launch the full-duplex WebRTC web interface locally:
+### 3. Mode B: Dedicated Full-Stack Voice Website (React + FastAPI)
+Launch the modern, responsive standalone web application:
+
+1. **Start the FastAPI Backend**:
+   ```bash
+   uv run python server.py
+   ```
+2. **Start the Vite React Frontend (Development)**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   Open `http://localhost:5173` in your browser.
+
+3. **Or Single-Command Production Mode**:
+   ```bash
+   npm --prefix frontend run build
+   uv run python server.py
+   ```
+   Open `http://localhost:8000` in your browser. Both API and UI run seamlessly on a single port.
+
+- **Audio-Reactive Voice Orb**: Concentric animated rings with live Web Audio API frequency waveform bars.
+- **Hands-Free Conversational Loop**: Automatic browser-side VAD, instant barge-in interruption, and live telemetry HUD (`emotion2vec` tone detection + confidence).
+
+### 4. Mode C: Hugging Face Spaces (Gradio + FastRTC)
+Launch the Hugging Face WebRTC interface locally:
 
 ```bash
 uv run python app.py
 ```
 Open `http://localhost:7860` in your browser. 
 
-- **ChatGPT Voice Mode Aesthetics**: Immersive centered acoustic orb with fluid concentric ripple waves and dynamic waveform bars.
-- **Hands-Free Full-Duplex WebRTC**: Powered by **FastRTC** and **Silero VAD**. Click **Start Call** once, and speak naturally—no record, pause, or send buttons.
-- **Real-Time Barge-In (Interruption)**: Cut off Marin mid-sentence simply by speaking over her.
-- **Voice Exit**: Speak `"bye"` or `"goodbye"` to conclude the call naturally.
-- **Live Acoustic Telemetry HUD**: Real-time monitoring of vocal sentiment, match confidence, and system state alongside a live subtitle transcript.
-
 ---
 
-## Live Cloud Deployment (Hugging Face Spaces)
+## Live Cloud Deployment
 
-Marin is deployed live on **Hugging Face Spaces**:
+- **Hugging Face Space**: [https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)
+- **Vercel Frontend**: Connect your GitHub repo to Vercel with Root Directory set to `frontend/`.
 
-👉 **[https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)**
-
-Anyone can visit the link on mobile or desktop and talk with Marin hands-free without installing Python or writing any code.
-
-### Deployment Setup:
-1. Add `GEMINI_API_KEY` under **Space Settings $\to$ Variables and secrets**.
-2. Push repository to Hugging Face:
-   ```bash
-   git push hf main
-   ```

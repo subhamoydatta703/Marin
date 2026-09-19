@@ -67,3 +67,7 @@ develop-eggs/
 *.flac
 *.ogg
 *.pcm
+
+
+
+/.vscode
