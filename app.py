@@ -79,7 +79,7 @@ def chat_pipeline(audio_filepath, chat_history, mood_choice, msg_state):
 
     top_emotion = emotion_info.get("top_emotion", "neutral")
     top_score = emotion_info.get("top_score", 1.0)
-    emotion_badge = f"🎭 Detected Emotion: **{top_emotion}** ({top_score:.1%})"
+    emotion_badge = f"Detected Emotion: **{top_emotion}** ({top_score:.1%})"
 
     # 3. Build Marin persona and prompt
     active_mood = mood_choice if mood_choice in MOODS else random.choice(list(MOODS))
@@ -112,7 +112,7 @@ def chat_pipeline(audio_filepath, chat_history, mood_choice, msg_state):
     return chat_history, audio_output_path, emotion_badge, msg_state
 
 def reset_chat():
-    return [], None, "Conversation reset.", []
+    return [], None, "Detected Emotion: *Conversation reset.*", []
 
 # --- Gradio User Interface ---
 theme = gr.themes.Soft(
@@ -124,9 +124,9 @@ theme = gr.themes.Soft(
 with gr.Blocks(theme=theme, title="Marin - Voice AI Companion") as demo:
     gr.Markdown(
         """
-        # 🎀 Marin — Voice AI Companion (v1.0)
-        ### Real-Time Voice Conversation with Vocal Emotion Recognition & Expressive Speech
-        Speak into your microphone below to converse with Marin. She listens to both your **words** and your **vocal emotion**!
+        # Marin -- Voice AI Companion (v1.0)
+        ### Real-Time Voice Conversation with Vocal Emotion Recognition and Expressive Speech
+        Speak into your microphone below to converse with Marin. She listens to both your **words** and your **vocal emotion**.
         """
     )
 
@@ -134,7 +134,7 @@ with gr.Blocks(theme=theme, title="Marin - Voice AI Companion") as demo:
 
     with gr.Row():
         with gr.Column(scale=1):
-            gr.Markdown("### 🎙️ Talk to Marin")
+            gr.Markdown("### Talk to Marin")
             audio_input = gr.Audio(
                 sources=["microphone"],
                 type="filepath",
@@ -145,13 +145,13 @@ with gr.Blocks(theme=theme, title="Marin - Voice AI Companion") as demo:
                 value="random",
                 label="Marin's Mood Persona:",
             )
-            submit_btn = gr.Button("Send Voice Message 💬", variant="primary")
-            reset_btn = gr.Button("Reset Call 🔄", variant="secondary")
-            emotion_display = gr.Markdown("🎭 Detected Emotion: *Waiting for speech...*")
+            submit_btn = gr.Button("Send Voice Message", variant="primary")
+            reset_btn = gr.Button("Reset Call", variant="secondary")
+            emotion_display = gr.Markdown("Detected Emotion: *Waiting for speech...*")
 
         with gr.Column(scale=2):
-            gr.Markdown("### 💬 Conversation")
-            chatbot = gr.Chatbot(label="Chat with Marin", type="messages", height=420)
+            gr.Markdown("### Conversation")
+            chatbot = gr.Chatbot(label="Chat with Marin", height=420)
             audio_output = gr.Audio(
                 label="Marin's Voice Response (Autoplay)",
                 autoplay=True,

@@ -27,6 +27,8 @@ dependencies = [
     "funasr>=1.4.16",
     "modelscope>=1.40.1",
     "onnxruntime>=1.30.0",
+    "gradio>=6.28.0",
+    "spaces>=0.51.3",
 ]
 
 [tool.uv.sources]
