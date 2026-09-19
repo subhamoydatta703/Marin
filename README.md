@@ -3,9 +3,8 @@ title: Marin AI
 emoji: "🎙️"
 colorFrom: purple
 colorTo: blue
-sdk: gradio
-sdk_version: 5.31.0
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 ---
@@ -194,13 +193,15 @@ Launch the modern, responsive standalone web application:
 - **Audio-Reactive Voice Orb**: Concentric animated rings with live Web Audio API frequency waveform bars.
 - **Hands-Free Conversational Loop**: Automatic browser-side VAD, instant barge-in interruption, and live telemetry HUD (`emotion2vec` tone detection + confidence).
 
-### 4. Mode C: Hugging Face Spaces (Gradio + FastRTC)
-Launch the Hugging Face WebRTC interface locally:
+### 4. Hugging Face Space (React + FastAPI)
 
-```bash
-uv run python app.py
-```
-Open `http://localhost:7860` in your browser. 
+The live Space serves this React app from FastAPI (`Dockerfile`, port 7860).
+
+1. In the Space: **Settings → Secrets** → `GEMINI_API_KEY`
+2. Push to the Space `main` branch (Docker rebuild)
+3. Open https://huggingface.co/spaces/subhamoy99/marin-ai
+
+Local Gradio (`uv run python app.py`) is optional and is not what the Space runs.
 
 ---
 
