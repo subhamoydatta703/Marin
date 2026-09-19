@@ -1,0 +1,16 @@
+torch
+torchaudio
+transformers
+google-genai
+pydantic
+edge-tts
+funasr
+modelscope
+onnxruntime
+soundfile
+numpy
+scipy
+python-dotenv
+accelerate
+gradio
+librosa

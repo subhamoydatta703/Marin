@@ -84,17 +84,21 @@ flowchart TD
 marin/
 ├── pyproject.toml                     # Project dependencies & CUDA PyTorch sources (uv)
 ├── uv.lock                            # Deterministic dependency lockfile
+├── requirements.txt                   # Hugging Face Spaces Python dependencies
+├── packages.txt                       # Hugging Face Spaces system packages (ffmpeg)
+├── app.py                             # Hugging Face Gradio web application entrypoint
 ├── .env                               # Environment configuration (GEMINI_API_KEY)
 ├── README.md                          # Project documentation
 ├── src/
-│   ├── app.py                         # Main full-duplex conversational voice loop
-│   ├── interuption/
+│   ├── app.py                         # Main full-duplex desktop conversational CLI loop
+│   ├── interruption/
+│   │   ├── __init__.py                # Package marker
 │   │   └── voice_interuption.py       # Silero VAD hands-free capture & barge-in interruption
 │   ├── speech_and_emotion/
-│   │   └── speech_and_emotion.py      # Concurrent dispatcher for STT & emotion2vec
+│   │   └── speech_and_emotion.py      # Concurrent ThreadPool dispatcher for STT & emotion2vec
 │   ├── speech_recognition/
 │   │   ├── emotion.py                 # FunASR emotion2vec_plus_large on CUDA
-│   │   ├── get_speech.py              # Legacy / direct microphone audio capture utilities
+│   │   ├── get_speech.py              # Microphone audio capture utilities & WAV buffer
 │   │   └── speech_emotion_detect.py   # Standalone emotion testing script
 │   ├── speech_to_text/
 │   │   └── stt_conversion.py          # Hugging Face Whisper-Small STT on CUDA
@@ -118,7 +122,7 @@ marin/
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
    ```
 3. **NVIDIA GPU with CUDA support** (e.g. RTX 30/40 series) with updated NVIDIA drivers.
-4. **[FFmpeg](https://ffmpeg.org/)** (for `ffplay`, used for audio playback):
+4. **[FFmpeg](https://ffmpeg.org/)** (for `ffplay`, used for desktop audio playback):
    - Ensure `ffplay` is accessible in your system `PATH`.
 5. **Google Gemini API Key** from [Google AI Studio](https://aistudio.google.com/).
 
@@ -134,7 +138,7 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 
 ---
 
-## Installation & Running
+## Running Marin
 
 ### 1. Synchronize Dependencies
 Sync all project dependencies, PyTorch CUDA wheels, and models with `uv`:
@@ -143,14 +147,38 @@ Sync all project dependencies, PyTorch CUDA wheels, and models with `uv`:
 uv sync
 ```
 
-### 2. Launch Marin
-Run the main conversational voice loop:
+### 2. Mode A: Desktop CLI Voice Companion (Full-Duplex + Interruption)
+Launch the desktop terminal companion:
 
 ```bash
 uv run python src/app.py
 ```
 
-### 3. How to Interact
 - **Hands-Free**: Speak into your microphone—Marin automatically detects when you speak and when you pause. No Enter key or button presses required.
 - **Barge-In / Interruptions**: If Marin is talking and you want to stop her or change the subject, simply speak over her. She will instantly cut off and listen to your new question.
 - **Voice Exit**: Say `"bye"`, `"quit"`, or `"exit"` at any time to cleanly conclude the session.
+
+### 3. Mode B: Web Browser Interface (Gradio)
+Launch the interactive web application locally:
+
+```bash
+uv run python app.py
+```
+Open `http://localhost:7860` in your browser to talk to Marin through your browser microphone with live emotion badges and chat transcripts.
+
+---
+
+## Deployment to Hugging Face Spaces
+
+Marin can be deployed as an interactive public cloud demo on **Hugging Face Spaces**:
+
+1. Create a new Space on [Hugging Face](https://huggingface.co/new-space):
+   - **SDK**: `Gradio`
+   - **Hardware**: `ZeroGPU (Free)`
+2. Add your `GEMINI_API_KEY` under **Space Settings $\to$ Variables and secrets**.
+3. Push your repository to Hugging Face:
+   ```bash
+   git remote add hf https://huggingface.co/spaces/subhamoy99/marin-ai
+   git push hf main
+   ```
+4. Anyone can open the Space URL in their browser and converse with Marin directly without installing anything!

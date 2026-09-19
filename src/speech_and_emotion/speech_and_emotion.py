@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from interuption.voice_interuption import get_voice_input
+from interruption.voice_interuption import get_voice_input
 from speech_to_text.stt_conversion import stt_conversion
 from speech_recognition.emotion import detect_emotion
 
