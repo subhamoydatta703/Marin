@@ -1,6 +1,6 @@
 ---
 title: Marin AI
-emoji: 🎙️
+emoji: ""
 colorFrom: purple
 colorTo: blue
 sdk: gradio
