@@ -3,9 +3,10 @@ title: Marin AI
 emoji: "🎙️"
 colorFrom: purple
 colorTo: blue
-sdk: docker
-app_port: 7860
-suggested_hardware: cpu-basic
+sdk: gradio
+sdk_version: 5.31.0
+app_file: app.py
+python_version: "3.12"
 pinned: false
 license: mit
 ---
@@ -194,16 +195,13 @@ Launch the modern, responsive standalone web application:
 - **Audio-Reactive Voice Orb**: Concentric animated rings with live Web Audio API frequency waveform bars.
 - **Hands-Free Conversational Loop**: Automatic browser-side VAD, instant barge-in interruption, and live telemetry HUD (`emotion2vec` tone detection + confidence).
 
-### 4. Hugging Face Space (React + FastAPI)
+### 4. Hugging Face Space (Gradio + ZeroGPU)
 
-The live Space serves this React app from FastAPI (`Dockerfile`, port 7860).
+This Space hardware is **ZeroGPU**, which only supports the **Gradio** SDK. The public URL therefore runs `app.py`, not the React orb.
 
-1. In the Space: **Settings → Hardware** → **CPU Basic** (not ZeroGPU — ZeroGPU only works with Gradio)
-2. **Settings → Secrets** → `GEMINI_API_KEY`
-3. Push to the Space `main` branch (Docker rebuild)
-4. Open https://huggingface.co/spaces/subhamoy99/marin-ai
+React remains the local/web stack: `npm run dev` + `uv run python server.py`, or `npm --prefix frontend run build` then `server.py`.
 
-Local Gradio (`uv run python app.py`) is optional and is not what the Space runs.
+To put React on Hugging Face later: **Settings → Hardware → CPU Basic** (or a paid GPU), then set README `sdk: docker` again. Docker + ZeroGPU will show `Configuration error`.
 
 ---
 
