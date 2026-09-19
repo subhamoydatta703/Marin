@@ -2,6 +2,7 @@ import argparse
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 
 # Marin is only supported/tested on Python 3.12-3.13 (see pyproject requires-python).
@@ -25,16 +26,42 @@ def cmd_talk() -> None:
     talk()
 
 
+def _server_ready(url: str, timeout: float = 1.0) -> bool:
+    """Return True once the Marin web server answers /api/health with HTTP 200."""
+    try:
+        with urllib.request.urlopen(f"{url}/api/health", timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def _open_browser_when_ready(url: str, timeout: float = 120.0) -> None:
+    """Open the browser only after the server has actually started serving.
+
+    Polls /api/health (the same probe the frontend uses) so the browser never
+    hits a dead port, no matter how long heavy imports (torch, whisper, ...)
+    take. Falls back to just printing the URL if the server never comes up.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _server_ready(url):
+            webbrowser.open(url)
+            return
+        time.sleep(0.5)
+    print(
+        f"Marin server did not become ready within {timeout:.0f}s. "
+        f"Open {url} manually once it is running.",
+        file=sys.stderr,
+    )
+
+
 def cmd_web() -> None:
     ensure_gemini_api_key()
     import uvicorn
 
-    def _open() -> None:
-        time.sleep(1.2)
-        webbrowser.open("http://127.0.0.1:8000")
-
-    threading.Thread(target=_open, daemon=True).start()
-    print("Marin web: http://127.0.0.1:8000")
+    url = "http://127.0.0.1:8000"
+    threading.Thread(target=_open_browser_when_ready, args=(url,), daemon=True).start()
+    print(f"Marin web: {url}")
     print("The UI is bundled with the pip install; source checkouts need `npm --prefix frontend run build` once.")
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=False)
 
