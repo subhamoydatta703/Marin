@@ -65,10 +65,15 @@ def render_status(emotion="Neutral", confidence=1.0, status="Ready"):
     conf_pct = int(confidence * 100) if confidence else 100
     emotion_display = emotion.capitalize() if emotion else "Neutral"
     status_color = "#10b981" if status in ("Active", "Speaking", "Ready") else "#f59e0b" if status == "Call Ended" else "#6366f1"
+    dot_color = status_color
     return f"""
-    <div class="status-row">
-        <span class="status-tag">{emotion_display} &middot; {conf_pct}%</span>
-        <span class="status-state" style="color:{status_color};">{status}</span>
+    <div class="hud-pill">
+        <span class="hud-dot" style="background:{dot_color}; box-shadow: 0 0 8px {dot_color};"></span>
+        <span class="hud-text"><strong style="color:#fff;">TONE</strong> {emotion_display}</span>
+        <span class="hud-sep">&middot;</span>
+        <span class="hud-text"><strong style="color:#fff;">CONFIDENCE</strong> {conf_pct}%</span>
+        <span class="hud-sep">&middot;</span>
+        <span class="hud-state" style="color:{status_color}; font-weight:700;">{status.upper()}</span>
     </div>
     """
 
@@ -162,221 +167,297 @@ def reset_session():
     return [], render_status("Neutral", 1.0, "Ready")
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+}
 
 body, .gradio-container {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    background: #0a0a0f !important;
+    background: #08090d !important;
     color: #ffffff !important;
     margin: 0 !important;
     padding: 0 !important;
 }
 
 .gradio-container {
-    max-width: 420px !important;
+    max-width: 480px !important;
     margin: 0 auto !important;
-    padding: 0 16px !important;
+    padding: 12px 16px 28px !important;
     min-height: 100vh !important;
     display: flex !important;
     flex-direction: column !important;
 }
 
-footer { display: none !important; }
+footer {
+    display: none !important;
+}
 
-.top-bar {
+/* Header */
+.top-nav {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 0 12px;
+    padding: 12px 0 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 16px;
 }
 
-.top-bar-left {
+.brand-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
-.logo-mark {
-    width: 28px;
-    height: 28px;
+.brand-avatar {
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background: #1a1d2e;
-    border: 1px solid rgba(255,255,255,0.12);
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.app-name {
-    font-size: 0.95rem;
+.brand-title {
+    font-size: 1.05rem;
     font-weight: 600;
     color: #fff;
     margin: 0;
+    letter-spacing: -0.01em;
 }
 
-.live-dot {
-    width: 7px;
-    height: 7px;
+.live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 9999px;
+    padding: 4px 10px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #34d399;
+    text-transform: uppercase;
+}
+
+.live-badge-dot {
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: #10b981;
     box-shadow: 0 0 8px #10b981;
-    display: inline-block;
 }
 
-.call-stage {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px 0 16px;
+/* Hero Stage */
+.hero-stage {
     text-align: center;
+    padding: 10px 0 8px;
 }
 
-.stage-title {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: #fff;
+.stage-heading {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
     margin: 0 0 4px;
+    letter-spacing: -0.01em;
 }
 
-.stage-hint {
-    font-size: 0.78rem;
-    color: #64748b;
-    margin: 0 0 28px;
+.stage-sub {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin: 0 0 16px;
 }
 
-#mic-btn {
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
+/* WebRTC Component Container */
+#voice-stream {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
-    margin: 0 auto 20px !important;
-    width: auto !important;
-    min-width: 0 !important;
+    margin: 0 auto 12px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 80px !important;
 }
 
-#mic-btn button,
-#mic-btn .icon-button,
-#mic-btn .icon-button-wrapper {
-    width: 80px !important;
-    height: 80px !important;
-    min-width: 80px !important;
-    min-height: 80px !important;
-    border-radius: 50% !important;
-    background: #2563eb !important;
+#voice-stream .block {
+    background: transparent !important;
     border: none !important;
-    box-shadow: 0 4px 24px rgba(37, 99, 235, 0.4) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    cursor: pointer !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    box-shadow: none !important;
     padding: 0 !important;
 }
 
-#mic-btn button:hover,
-#mic-btn .icon-button:hover {
-    transform: scale(1.06) !important;
-    box-shadow: 0 6px 32px rgba(37, 99, 235, 0.55) !important;
+/* Pre-connection grant permission button styling */
+#voice-stream button.svelte-hvsij8 {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 9999px !important;
+    padding: 14px 28px !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+    box-shadow: 0 4px 24px rgba(37, 99, 235, 0.45) !important;
+    cursor: pointer !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
 }
 
-#mic-btn button:active,
-#mic-btn .icon-button:active {
-    transform: scale(0.95) !important;
+#voice-stream button.svelte-hvsij8:hover {
+    background: #1d4ed8 !important;
+    transform: translateY(-1px) scale(1.02) !important;
+    box-shadow: 0 6px 30px rgba(37, 99, 235, 0.6) !important;
 }
 
-#mic-btn button svg,
-#mic-btn .icon-button svg,
-#mic-btn .wave {
-    width: 28px !important;
-    height: 28px !important;
-    color: #fff !important;
-    fill: #fff !important;
+#voice-stream button.svelte-hvsij8 .wrap {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    color: #ffffff !important;
+    font-size: 0.88rem !important;
 }
 
-.status-row {
+#voice-stream button.svelte-hvsij8 svg {
+    width: 20px !important;
+    height: 20px !important;
+    fill: #ffffff !important;
+}
+
+/* Connected WebRTC Wave Container */
+#voice-stream .gradio-webrtc-waveContainer {
+    background: transparent !important;
+    border: none !important;
+}
+
+#voice-stream .gradio-webrtc-icon {
+    box-shadow: 0 4px 24px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* Telemetry HUD Pill */
+.hud-wrapper {
     display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 10px;
+    margin: 8px 0 14px;
+}
+
+.hud-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 0.72rem;
-    font-weight: 500;
-    color: #94a3b8;
-    padding: 6px 0 14px;
-}
-
-.status-tag {
+    font-family: 'JetBrains Mono', monospace;
     color: #94a3b8;
 }
 
-.status-state {
-    font-weight: 600;
+.hud-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.hud-sep {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+/* Control Card */
+.control-card {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-radius: 16px !important;
+    padding: 12px 14px !important;
+    margin-bottom: 14px !important;
 }
 
 .controls-row {
     display: flex !important;
+    flex-direction: row !important;
     align-items: center !important;
-    justify-content: center !important;
     gap: 10px !important;
-    padding: 0 0 14px !important;
+    width: 100% !important;
 }
 
-#mood-pick {
-    max-width: 140px !important;
-}
-
-#mood-pick label { display: none !important; }
-
-#mood-pick select,
-#mood-pick .wrap {
-    background: rgba(255,255,255,0.05) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 8px !important;
-    color: #cbd5e1 !important;
-    font-size: 0.78rem !important;
-    padding: 6px 10px !important;
-}
-
-#rst-btn {
+#mood-container {
+    flex: 1 1 65% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: transparent !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-radius: 8px !important;
-    color: #64748b !important;
-    font-size: 0.78rem !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#mood-container .wrap,
+#mood-container select {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    color: #e2e8f0 !important;
+    font-size: 0.8rem !important;
+    padding: 8px 12px !important;
+}
+
+#mood-container label {
+    display: none !important;
+}
+
+#reset-btn {
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    color: #94a3b8 !important;
+    font-size: 0.8rem !important;
     font-weight: 500 !important;
-    padding: 6px 12px !important;
+    padding: 8px 16px !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+    height: auto !important;
 }
 
-#rst-btn:hover {
-    background: rgba(255,255,255,0.05) !important;
-    color: #fff !important;
+#reset-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
 }
 
-.transcript-section {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    border-radius: 14px !important;
-    padding: 10px 12px !important;
+/* Transcript Card */
+.transcript-card {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-radius: 16px !important;
+    padding: 12px 14px !important;
     margin-bottom: 12px !important;
 }
 
-.transcript-title {
-    font-size: 0.65rem;
+.transcript-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #475569;
-    margin: 0 0 8px;
-    padding: 0 2px;
+    color: #64748b;
 }
 
 #chat-log {
@@ -390,50 +471,51 @@ footer { display: none !important; }
 
 #chat-log .message.user {
     background: rgba(37, 99, 235, 0.12) !important;
-    border: 1px solid rgba(37, 99, 235, 0.2) !important;
+    border: 1px solid rgba(37, 99, 235, 0.22) !important;
     border-radius: 12px 12px 2px 12px !important;
     color: #f1f5f9 !important;
-    font-size: 0.82rem !important;
+    font-size: 0.84rem !important;
+    line-height: 1.45 !important;
     padding: 8px 12px !important;
 }
 
 #chat-log .message.bot {
-    background: rgba(255,255,255,0.03) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
     border-radius: 12px 12px 12px 2px !important;
     color: #e2e8f0 !important;
-    font-size: 0.82rem !important;
+    font-size: 0.84rem !important;
+    line-height: 1.45 !important;
     padding: 8px 12px !important;
 }
 
+/* Footer */
 .app-footer {
     text-align: center;
-    font-size: 0.65rem;
-    color: #334155;
-    padding: 8px 0 16px;
-}
-
-@media (min-width: 640px) {
-    .gradio-container { max-width: 420px !important; }
+    font-size: 0.68rem;
+    color: #475569;
+    padding: 8px 0;
+    margin-top: auto;
 }
 """
 
-with gr.Blocks(css=CUSTOM_CSS, title="Marin") as demo:
+with gr.Blocks(css=CUSTOM_CSS, title="Marin Voice AI") as demo:
 
     gr.HTML("""
-    <div class="top-bar">
-        <div class="top-bar-left">
-            <div class="logo-mark">M</div>
-            <p class="app-name">Marin</p>
+    <div class="top-nav">
+        <div class="brand-left">
+            <div class="brand-avatar">M</div>
+            <p class="brand-title">Marin</p>
         </div>
-        <span class="live-dot"></span>
+        <div class="live-badge">
+            <span class="live-badge-dot"></span>
+            <span>Real-Time Voice</span>
+        </div>
     </div>
-    """)
 
-    gr.HTML("""
-    <div class="call-stage">
-        <h2 class="stage-title">Talk with Marin</h2>
-        <p class="stage-hint">Tap to start. Speak hands-free. Say "bye" to end.</p>
+    <div class="hero-stage">
+        <h2 class="stage-heading">Talk with Marin</h2>
+        <p class="stage-sub">Tap to connect microphone. Speak hands-free. Say "bye" to end.</p>
     </div>
     """)
 
@@ -445,28 +527,36 @@ with gr.Blocks(css=CUSTOM_CSS, title="Marin") as demo:
         variant="wave",
         icon_button_color="#2563eb",
         pulse_color="#3b82f6",
-        icon_radius=40,
+        icon_radius=50,
         full_screen=False,
         container=False,
-        elem_id="mic-btn",
+        elem_id="voice-stream",
     )
 
-    telemetry_display = gr.HTML(render_status("Neutral", 1.0, "Ready"))
-
-    with gr.Row(elem_classes=["controls-row"]):
-        mood_dropdown = gr.Dropdown(
-            choices=["random"] + list(MOODS),
-            value="random",
-            label="",
-            elem_id="mood-pick",
+    with gr.Column(elem_classes=["control-card"]):
+        telemetry_display = gr.HTML(
+            f'<div class="hud-wrapper">{render_status("Neutral", 1.0, "Ready")}</div>'
         )
-        reset_btn = gr.Button("Reset", variant="secondary", elem_id="rst-btn")
 
-    with gr.Column(elem_classes=["transcript-section"]):
-        gr.HTML('<p class="transcript-title">Live Transcript</p>')
+        with gr.Row(elem_classes=["controls-row"]):
+            mood_dropdown = gr.Dropdown(
+                choices=["random"] + list(MOODS),
+                value="random",
+                label="",
+                elem_id="mood-container",
+            )
+            reset_btn = gr.Button("↺ Reset", variant="secondary", elem_id="reset-btn")
+
+    with gr.Column(elem_classes=["transcript-card"]):
+        gr.HTML("""
+        <div class="transcript-header">
+            <span>Live Transcript</span>
+            <span>Full Duplex</span>
+        </div>
+        """)
         chatbot = gr.Chatbot(
             label="",
-            height=180,
+            height=200,
             show_label=False,
             type="messages",
             elem_id="chat-log",
