@@ -1,7 +1,11 @@
 
 import time
 import io
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
 from scipy.io import wavfile
 import numpy as np
 
@@ -9,17 +13,17 @@ sample_rate = 16000 #Hz
 channel = 1
 max_duration = 300
 
-
-
 # recording happens
 def recording(duration=max_duration,samplerate=sample_rate,channels=channel):
-  print("Recoding started....press enter to stop....")
-  start_time = time.time() 
-  audio_data = sd.rec(int(duration*samplerate),samplerate=samplerate,channels=channels)
-  input()
-  end_time = time.time()
-  sd.stop()
-  return audio_data, start_time, end_time
+    if sd is None:
+        raise RuntimeError("sounddevice is not installed or available in this environment.")
+    print("Recoding started....press enter to stop....")
+    start_time = time.time() 
+    audio_data = sd.rec(int(duration*samplerate),samplerate=samplerate,channels=channels)
+    input()
+    end_time = time.time()
+    sd.stop()
+    return audio_data, start_time, end_time
 
 # trim audio data
 

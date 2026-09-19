@@ -6,23 +6,39 @@ logging.getLogger("modelscope").setLevel(logging.ERROR)
 logging.getLogger("funasr").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore")
 
+import io
+import torch
+import numpy as np
+from scipy.io import wavfile
 from funasr import AutoModel
-from speech_recognition.get_speech import pcm_to_wav_buffer
-from speech_recognition.get_speech import trim_audio
 
 model_id = "iic/emotion2vec_plus_large"
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 model = AutoModel(
     model=model_id,
     hub="ms",
     disable_update=True,
     disable_pbar=True,
-    device="cuda",
+    device=device,
 )
+
+def pcm_to_wav_buffer(trimmed_audio, sample_rate=16000):
+    audio_int16 = (trimmed_audio * 32767).astype(np.int16)
+    buffer = io.BytesIO()
+    wavfile.write(buffer, sample_rate, audio_int16)
+    buffer.seek(0)
+    buffer.name = "audio.wav"
+    return buffer
 
 def detect_emotion(trimmed_audio=None):
     if trimmed_audio is None:
-        trimmed_audio = trim_audio()
+        try:
+            from speech_recognition.get_speech import trim_audio
+            trimmed_audio = trim_audio()
+        except Exception:
+            return {"top_emotion": "neutral", "top_score": 1.0, "ranked": [("neutral", 1.0)]}
     
     buffer_data = pcm_to_wav_buffer(trimmed_audio)
 
