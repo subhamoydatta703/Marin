@@ -170,27 +170,33 @@ uv run python src/app.py
 - **Barge-In / Interruptions**: If Marin is talking and you want to stop her or change the subject, simply speak over her. She will instantly cut off and listen to your new question.
 - **Voice Exit**: Say `"bye"`, `"quit"`, or `"exit"` at any time to cleanly conclude the session.
 
-### 3. Mode B: Web Browser Interface (Gradio)
-Launch the interactive web application locally:
+### 3. Mode B: Real-Time Web Voice Companion (ChatGPT Voice Mode)
+Launch the full-duplex WebRTC web interface locally:
 
 ```bash
 uv run python app.py
 ```
-Open `http://localhost:7860` in your browser to talk to Marin through your browser microphone with live emotion badges and chat transcripts.
+Open `http://localhost:7860` in your browser. 
+
+- **ChatGPT Voice Mode Aesthetics**: Immersive centered acoustic orb with fluid concentric ripple waves and dynamic waveform bars.
+- **Hands-Free Full-Duplex WebRTC**: Powered by **FastRTC** and **Silero VAD**. Click **Start Call** once, and speak naturally—no record, pause, or send buttons.
+- **Real-Time Barge-In (Interruption)**: Cut off Marin mid-sentence simply by speaking over her.
+- **Voice Exit**: Speak `"bye"` or `"goodbye"` to conclude the call naturally.
+- **Live Acoustic Telemetry HUD**: Real-time monitoring of vocal sentiment, match confidence, and system state alongside a live subtitle transcript.
 
 ---
 
-## Deployment to Hugging Face Spaces
+## Live Cloud Deployment (Hugging Face Spaces)
 
-Marin can be deployed as an interactive public cloud demo on **Hugging Face Spaces**:
+Marin is deployed live on **Hugging Face Spaces**:
 
-1. Create a new Space on [Hugging Face](https://huggingface.co/new-space):
-   - **SDK**: `Gradio`
-   - **Hardware**: `ZeroGPU (Free)`
-2. Add your `GEMINI_API_KEY` under **Space Settings $\to$ Variables and secrets**.
-3. Push your repository to Hugging Face:
+👉 **[https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)**
+
+Anyone can visit the link on mobile or desktop and talk with Marin hands-free without installing Python or writing any code.
+
+### Deployment Setup:
+1. Add `GEMINI_API_KEY` under **Space Settings $\to$ Variables and secrets**.
+2. Push repository to Hugging Face:
    ```bash
-   git remote add hf https://huggingface.co/spaces/subhamoy99/marin-ai
    git push hf main
    ```
-4. Anyone can open the Space URL in their browser and converse with Marin directly without installing anything!

@@ -12,6 +12,7 @@ numpy
 scipy
 python-dotenv
 accelerate
-gradio
+gradio>=5.0.0
+fastrtc[vad]
 librosa
 sounddevice

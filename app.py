@@ -1,12 +1,14 @@
 import os
 import sys
-import uuid
+import re
+import io
 import datetime
 import random
 import asyncio
 import gradio as gr
 import numpy as np
 import librosa
+import soundfile as sf
 import edge_tts
 from dotenv import load_dotenv
 
@@ -20,6 +22,15 @@ try:
 except ImportError:
     def gpu_decorator(fn):
         return fn
+
+from fastrtc import (
+    WebRTC,
+    ReplyOnPause,
+    AdditionalOutputs,
+    CloseStream,
+    audio_to_float32,
+    get_hf_turn_credentials,
+)
 
 from speech_to_text.stt_conversion import stt_conversion
 from speech_recognition.emotion import detect_emotion
@@ -39,399 +50,438 @@ def get_time_of_day():
         return "evening"
     return "night"
 
-@gpu_decorator
-def process_audio(audio_path):
-    audio_data, _ = librosa.load(audio_path, sr=16000, mono=True)
-    audio_data = audio_data.astype(np.float32)
-    emotion_info = detect_emotion(audio_data)
-    stt_info = stt_conversion(audio_data)
-    user_text = stt_info.get("text", "").strip() if isinstance(stt_info, dict) else str(stt_info).strip()
-    return user_text, emotion_info
-
-async def synthesize_speech(text, rate, pitch, output_filename):
-    communicate = edge_tts.Communicate(text=text, voice=VOICE, rate=rate, pitch=pitch)
-    await communicate.save(output_filename)
-    return output_filename
+async def synthesize_speech_array(text, rate="+6%", pitch="+6Hz", voice=VOICE):
+    communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+    audio_bytes = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_bytes += chunk["data"]
+    if not audio_bytes:
+        return 24000, np.zeros(2400, dtype=np.float32)
+    audio_segment, sample_rate = sf.read(io.BytesIO(audio_bytes), dtype="float32")
+    return sample_rate, audio_segment
 
 def render_telemetry_hud(emotion="Neutral", confidence=1.0, status="Ready"):
     conf_pct = int(confidence * 100) if confidence else 100
     emotion_display = emotion.capitalize() if emotion else "Neutral"
     return f"""
-    <div class="hud-container">
-        <div class="hud-item">
-            <span class="hud-label">VOCAL SENTIMENT</span>
-            <span class="hud-val emotion-highlight">{emotion_display}</span>
-        </div>
-        <div class="hud-item">
-            <span class="hud-label">CONFIDENCE</span>
-            <div class="hud-meter-wrap">
-                <div class="hud-meter-bar" style="width: {conf_pct}%;"></div>
-            </div>
-            <span class="hud-subval">{conf_pct}% Match</span>
-        </div>
-        <div class="hud-item">
-            <span class="hud-label">SYSTEM STATE</span>
-            <span class="hud-val status-pill">{status}</span>
-        </div>
+    <div class="hud-pill">
+        <span class="hud-badge-dot"></span>
+        <span class="hud-label">TONE</span>
+        <span class="hud-val">{emotion_display}</span>
+        <span class="hud-sep">·</span>
+        <span class="hud-label">CONFIDENCE</span>
+        <span class="hud-val">{conf_pct}%</span>
+        <span class="hud-sep">·</span>
+        <span class="hud-status">{status.upper()}</span>
     </div>
     """
 
-def chat_pipeline(audio_filepath, chat_history, mood_choice, msg_state):
-    if not audio_filepath:
-        return chat_history, None, render_telemetry_hud("None", 0.0, "Standby"), msg_state
+@gpu_decorator
+def process_audio_chunk(audio_16k):
+    emotion_info = detect_emotion(audio_16k)
+    stt_info = stt_conversion(audio_16k)
+    user_text = stt_info.get("text", "").strip() if isinstance(stt_info, dict) else str(stt_info).strip()
+    return user_text, emotion_info
 
-    if msg_state is None:
-        msg_state = []
+def conversation_loop(audio: tuple[int, np.ndarray], mood_choice: str, chat_history: list):
+    if audio is None:
+        return
+
+    input_sr, audio_data = audio
+    if audio_data is None or len(audio_data) == 0:
+        return
+
+    if audio_data.ndim > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    if audio_data.dtype != np.float32:
+        audio_data = audio_to_float32(audio_data)
+
+    if input_sr != 16000:
+        audio_16k = librosa.resample(audio_data, orig_sr=input_sr, target_sr=16000)
+    else:
+        audio_16k = audio_data
 
     try:
-        user_text, emotion_info = process_audio(audio_filepath)
-    except Exception as e:
-        err_hud = render_telemetry_hud("Error", 0.0, "Audio Failed")
-        return chat_history, None, err_hud, msg_state
+        user_text, emotion_info = process_audio_chunk(audio_16k)
+    except Exception:
+        emotion_info = {"top_emotion": "neutral", "top_score": 1.0}
+        user_text = ""
 
     if not user_text:
-        no_speech_hud = render_telemetry_hud("Unrecognized", 0.0, "No Speech Detected")
-        return chat_history, None, no_speech_hud, msg_state
+        return
 
     top_emotion = emotion_info.get("top_emotion", "neutral")
     top_score = float(emotion_info.get("top_score", 1.0))
 
+    cleared_text = re.sub(r'[.!?,]+$', '', user_text.strip().lower())
+    is_exit = any(w in cleared_text for w in ["bye", "goodbye", "quit", "exit", "see you"])
+
     active_mood = mood_choice if mood_choice in MOODS else random.choice(list(MOODS))
     rate, pitch = MOOD_VOICE_PRESETS.get(active_mood, ("+6%", "+6Hz"))
+
+    if is_exit:
+        reply_text = "Goodbye! It was wonderful speaking with you. Have an amazing day!"
+        updated_history = (chat_history or []) + [
+            {"role": "user", "content": user_text},
+            {"role": "assistant", "content": reply_text},
+        ]
+        hud = render_telemetry_hud(top_emotion, top_score, "Call Ended")
+        yield AdditionalOutputs(updated_history, hud)
+
+        sr, audio_arr = asyncio.run(synthesize_speech_array(reply_text, rate=rate, pitch=pitch))
+        chunk_size = 2400
+        for i in range(0, len(audio_arr), chunk_size):
+            yield (sr, audio_arr[i : i + chunk_size])
+        yield CloseStream()
+        return
+
     prompt = build_prompt(mood=active_mood, time_of_day=get_time_of_day())
 
-    msg_state.append(Message(role="user", text=user_text, emotion_type=top_emotion, emotion_score=top_score))
+    messages = []
+    if chat_history:
+        for m in chat_history[-6:]:
+            if isinstance(m, dict):
+                r = "user" if m.get("role") == "user" else "model"
+                messages.append(Message(role=r, text=m.get("content", "")))
+    messages.append(Message(role="user", text=user_text, emotion_type=top_emotion, emotion_score=top_score))
+
     try:
-        reply_text = answerGeneration(msg_state, system_prompt=prompt)
+        reply_text = answerGeneration(messages, system_prompt=prompt)
     except Exception as e:
-        reply_text = f"Communication interrupted: {e}"
+        reply_text = f"Connection interrupted: {e}"
 
-    msg_state.append(Message(role="model", text=reply_text))
+    updated_history = (chat_history or []) + [
+        {"role": "user", "content": user_text},
+        {"role": "assistant", "content": reply_text},
+    ]
+    hud = render_telemetry_hud(top_emotion, top_score, "Speaking")
+    yield AdditionalOutputs(updated_history, hud)
 
-    os.makedirs("outputs", exist_ok=True)
-    audio_output_path = os.path.join("outputs", f"reply_{uuid.uuid4().hex[:8]}.mp3")
-    try:
-        asyncio.run(synthesize_speech(reply_text, rate, pitch, audio_output_path))
-    except Exception:
-        audio_output_path = None
+    sr, audio_arr = asyncio.run(synthesize_speech_array(reply_text, rate=rate, pitch=pitch))
+    chunk_size = 2400
+    for i in range(0, len(audio_arr), chunk_size):
+        yield (sr, audio_arr[i : i + chunk_size])
 
-    chat_history = chat_history or []
-    chat_history.append((user_text, reply_text))
-
-    hud_html = render_telemetry_hud(top_emotion, top_score, "Active")
-    return chat_history, audio_output_path, hud_html, msg_state
-
-def reset_chat():
-    return [], None, render_telemetry_hud("Neutral", 1.0, "Session Reset"), []
+def reset_session():
+    return [], render_telemetry_hud("Neutral", 1.0, "Ready")
 
 CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-    --bg-main: #090a0f;
-    --surface-1: #111319;
-    --surface-2: #171a23;
+    --bg-void: #050608;
+    --surface-glass: rgba(18, 20, 29, 0.7);
     --surface-border: rgba(255, 255, 255, 0.08);
-    --surface-border-subtle: rgba(255, 255, 255, 0.04);
-    --text-primary: #f8fafc;
+    --text-primary: #ffffff;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
     --accent: #6366f1;
-    --accent-glow: rgba(99, 102, 241, 0.15);
     --status-active: #10b981;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body, .gradio-container {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    background-color: var(--bg-main) !important;
+    background: radial-gradient(circle at 50% 30%, #111422 0%, #050608 70%) !important;
     color: var(--text-primary) !important;
+    min-height: 100vh !important;
     margin: 0 !important;
     padding: 0 !important;
 }
 
 .gradio-container {
-    max-width: 1240px !important;
+    max-width: 900px !important;
     margin: 0 auto !important;
-    padding: 32px 24px !important;
+    padding: 24px 20px !important;
 }
 
 footer {
     display: none !important;
 }
 
-#nav-bar {
+#chatgpt-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 24px;
-    margin-bottom: 24px;
-    border-bottom: 1px solid var(--surface-border);
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.brand-group {
+.brand-wrapper {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.brand-logo {
+.brand-symbol {
     width: 32px;
     height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #1e2230, #2a2f42);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 50%;
+    background: #1e2235;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
     font-weight: 700;
-    color: #f8fafc;
-    letter-spacing: -0.02em;
+    font-size: 14px;
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
-.brand-name {
-    font-size: 1.1rem;
-    font-weight: 700;
+.brand-title {
+    font-size: 1.05rem;
+    font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--text-primary);
     margin: 0;
 }
 
-.brand-badge {
+.brand-pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
+    padding: 3px 10px;
     border-radius: 9999px;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 500;
     background: rgba(16, 185, 129, 0.08);
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.25);
     color: var(--status-active);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
 }
 
-.status-dot {
+.brand-pill-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: var(--status-active);
+    background: var(--status-active);
     box-shadow: 0 0 8px var(--status-active);
 }
 
-.system-spec {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-}
-
-.control-card {
-    background: var(--surface-1) !important;
-    border: 1px solid var(--surface-border) !important;
-    border-radius: 16px !important;
-    padding: 24px !important;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.card-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
-    margin: 0 0 14px 0;
-}
-
-.orb-stage {
+#voice-hero-stage {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 36px 16px;
-    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
-    border-radius: 14px;
-    border: 1px solid var(--surface-border-subtle);
+    padding: 30px 20px 20px;
+    text-align: center;
 }
 
-.sound-sphere {
-    width: 96px;
-    height: 96px;
+.orb-container {
+    position: relative;
+    width: 170px;
+    height: 170px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.orb-ripple {
+    position: absolute;
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #2a2e44 0%, #12141d 80%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 0 30px rgba(99, 102, 241, 0.12), inset 0 0 20px rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    animation: ripple-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.orb-ripple:nth-child(2) {
+    animation-delay: 1s;
+}
+
+.orb-ripple:nth-child(3) {
+    animation-delay: 2s;
+}
+
+@keyframes ripple-pulse {
+    0% { transform: scale(0.85); opacity: 0.8; }
+    100% { transform: scale(1.45); opacity: 0; }
+}
+
+.orb-core {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #373c59 0%, #1a1d2e 60%, #0d0f17 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 50px rgba(99, 102, 241, 0.25), inset 0 0 25px rgba(99, 102, 241, 0.3);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    animation: orb-pulse 4s ease-in-out infinite;
+    z-index: 2;
+    animation: orb-breathe 4s ease-in-out infinite alternate;
 }
 
-@keyframes orb-pulse {
-    0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(99, 102, 241, 0.1); }
-    50% { transform: scale(1.03); box-shadow: 0 0 40px rgba(99, 102, 241, 0.22); }
+@keyframes orb-breathe {
+    0% { transform: scale(1); box-shadow: 0 0 35px rgba(99, 102, 241, 0.2); }
+    100% { transform: scale(1.05); box-shadow: 0 0 55px rgba(99, 102, 241, 0.35); }
 }
 
-.waveform-bars {
+.orb-wave-bars {
     display: flex;
     align-items: center;
-    gap: 3px;
-    height: 24px;
+    gap: 4px;
+    height: 28px;
 }
 
-.waveform-bars span {
+.orb-wave-bars span {
     width: 3px;
-    background: #c7d2fe;
+    background: #ffffff;
     border-radius: 2px;
-    animation: bar-wave 1.4s ease-in-out infinite alternate;
+    animation: bar-dance 1.4s ease-in-out infinite alternate;
 }
 
-.waveform-bars span:nth-child(1) { height: 8px; animation-delay: 0.1s; }
-.waveform-bars span:nth-child(2) { height: 16px; animation-delay: 0.3s; }
-.waveform-bars span:nth-child(3) { height: 22px; animation-delay: 0.2s; }
-.waveform-bars span:nth-child(4) { height: 14px; animation-delay: 0.4s; }
-.waveform-bars span:nth-child(5) { height: 9px; animation-delay: 0.15s; }
+.orb-wave-bars span:nth-child(1) { height: 10px; animation-delay: 0.1s; }
+.orb-wave-bars span:nth-child(2) { height: 20px; animation-delay: 0.3s; }
+.orb-wave-bars span:nth-child(3) { height: 28px; animation-delay: 0.2s; }
+.orb-wave-bars span:nth-child(4) { height: 18px; animation-delay: 0.4s; }
+.orb-wave-bars span:nth-child(5) { height: 10px; animation-delay: 0.15s; }
 
-@keyframes bar-wave {
-    0% { transform: scaleY(0.4); opacity: 0.5; }
+@keyframes bar-dance {
+    0% { transform: scaleY(0.35); opacity: 0.6; }
     100% { transform: scaleY(1); opacity: 1; }
 }
 
-.orb-caption {
-    margin-top: 16px;
-    font-size: 0.82rem;
+.stage-tagline {
+    font-size: 1.15rem;
     font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+}
+
+.stage-subline {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0 0 16px;
+}
+
+.hud-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
     color: var(--text-secondary);
-    letter-spacing: 0.01em;
 }
 
-.hud-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 12px;
-    background: var(--surface-2);
-    border: 1px solid var(--surface-border);
-    border-radius: 12px;
-    padding: 14px;
-}
-
-.hud-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+.hud-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #6366f1;
+    box-shadow: 0 0 6px #6366f1;
 }
 
 .hud-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
     color: var(--text-muted);
-    letter-spacing: 0.05em;
-    font-weight: 500;
 }
 
 .hud-val {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.emotion-highlight {
-    color: #a5b4fc;
-}
-
-.hud-meter-wrap {
-    height: 4px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 9999px;
-    overflow: hidden;
-    margin: 4px 0 2px 0;
-}
-
-.hud-meter-bar {
-    height: 100%;
-    background: #6366f1;
-    border-radius: 9999px;
-    transition: width 0.3s ease;
-}
-
-.hud-subval {
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-}
-
-.status-pill {
-    font-size: 0.72rem;
+    color: #e2e8f0;
     font-weight: 500;
+}
+
+.hud-sep {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.hud-status {
     color: var(--status-active);
+    font-weight: 600;
 }
 
-#audio-input-block {
-    background: var(--surface-2) !important;
-    border: 1px solid var(--surface-border) !important;
-    border-radius: 12px !important;
+.voice-call-card {
+    background: rgba(18, 20, 29, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(20px) !important;
+    border-radius: 20px !important;
+    padding: 16px 20px !important;
+    margin: 16px auto !important;
+    max-width: 540px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+}
+
+.voice-stream-container {
+    border-radius: 14px !important;
     overflow: hidden !important;
+    background: transparent !important;
+    border: none !important;
 }
 
-#action-btn-row {
+.action-dock {
     display: flex;
-    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 14px;
 }
 
-#send-btn {
-    background: var(--accent) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-    font-size: 0.88rem !important;
+#mood-selector {
+    flex: 1 !important;
+    margin: 0 !important;
+}
+
+#mood-selector label {
+    display: none !important;
+}
+
+#mood-selector select {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 10px !important;
-    padding: 12px !important;
-    transition: all 0.15s ease !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-}
-
-#send-btn:hover {
-    background: #4f46e5 !important;
-    transform: translateY(-1px) !important;
+    color: #cbd5e1 !important;
+    font-size: 0.82rem !important;
+    padding: 8px 12px !important;
 }
 
 #reset-btn {
     background: transparent !important;
-    border: 1px solid var(--surface-border) !important;
-    color: var(--text-secondary) !important;
-    font-weight: 500 !important;
-    font-size: 0.84rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 10px !important;
-    padding: 10px !important;
+    color: var(--text-secondary) !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    padding: 8px 14px !important;
     transition: all 0.15s ease !important;
 }
 
 #reset-btn:hover {
-    background: var(--surface-2) !important;
-    color: var(--text-primary) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #ffffff !important;
 }
 
-#mood-selector label {
-    font-size: 0.7rem !important;
-    color: var(--text-muted) !important;
-    letter-spacing: 0.06em !important;
-    text-transform: uppercase !important;
-}
-
-#mood-selector select {
-    background: var(--surface-2) !important;
-    border: 1px solid var(--surface-border) !important;
-    border-radius: 8px !important;
-    color: var(--text-primary) !important;
-    font-size: 0.84rem !important;
-}
-
-#chatbot-panel {
-    background: var(--surface-1) !important;
-    border: 1px solid var(--surface-border) !important;
+.transcript-card {
+    background: rgba(14, 16, 23, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
     border-radius: 16px !important;
-    padding: 24px !important;
+    padding: 16px !important;
+    margin-top: 18px !important;
+}
+
+.transcript-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
 }
 
 #chat-stream {
@@ -444,144 +494,128 @@ footer {
 }
 
 #chat-stream .message.user {
-    background: #1e2230 !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 12px 12px 2px 12px !important;
+    background: #1b1e2c !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 14px 14px 2px 14px !important;
     color: #f1f5f9 !important;
-    font-size: 0.9rem !important;
+    font-size: 0.88rem !important;
     line-height: 1.5 !important;
 }
 
 #chat-stream .message.bot {
-    background: #141720 !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 12px 12px 12px 2px !important;
+    background: #10121a !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border-radius: 14px 14px 14px 2px !important;
     color: #e2e8f0 !important;
-    font-size: 0.9rem !important;
+    font-size: 0.88rem !important;
     line-height: 1.5 !important;
 }
 
-#audio-output-block {
-    background: var(--surface-2) !important;
-    border: 1px solid var(--surface-border) !important;
-    border-radius: 10px !important;
-    margin-top: 14px !important;
-}
-
-.footer-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 24px;
-    margin-top: 32px;
-    border-top: 1px solid var(--surface-border-subtle);
+.footer-credits {
+    text-align: center;
+    margin-top: 24px;
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: #475569;
 }
 """
 
 with gr.Blocks(css=CUSTOM_CSS, title="Marin Voice Companion") as demo:
 
     gr.HTML("""
-    <div id="nav-bar">
-        <div class="brand-group">
-            <div class="brand-logo">M</div>
+    <div id="chatgpt-header">
+        <div class="brand-wrapper">
+            <div class="brand-symbol">M</div>
             <div>
-                <p class="brand-name">Marin</p>
-            </div>
-            <div class="brand-badge">
-                <span class="status-dot"></span>
-                <span>ONLINE</span>
+                <p class="brand-title">Marin</p>
             </div>
         </div>
-        <div class="system-spec">
-            <span>FULL DUPLEX · EMOTION2VEC · GEMINI · EDGE-TTS</span>
+        <div class="brand-pill">
+            <span class="brand-pill-dot"></span>
+            <span>REAL-TIME VOICE</span>
         </div>
+    </div>
+
+    <div id="voice-hero-stage">
+        <div class="orb-container">
+            <div class="orb-ripple"></div>
+            <div class="orb-ripple"></div>
+            <div class="orb-ripple"></div>
+            <div class="orb-core">
+                <div class="orb-wave-bars">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+        <h2 class="stage-tagline">Speak freely with Marin</h2>
+        <p class="stage-subline">Hands-free conversation with barge-in interruption. Say "Bye" to exit.</p>
     </div>
     """)
 
-    msg_state = gr.State([])
+    with gr.Column(elem_classes=["voice-call-card"]):
+        telemetry_display = gr.HTML(
+            render_telemetry_hud("Neutral", 1.0, "Ready"),
+        )
 
-    with gr.Row(equal_height=False):
-        with gr.Column(scale=5, min_width=320):
-            with gr.Group(elem_classes=["control-card"]):
-                gr.HTML('<p class="card-title">Acoustic Stage</p>')
+        webrtc_stream = WebRTC(
+            label="",
+            mode="send-receive",
+            modality="audio",
+            rtc_configuration=get_hf_turn_credentials,
+            elem_classes=["voice-stream-container"],
+        )
 
-                gr.HTML("""
-                <div class="orb-stage">
-                    <div class="sound-sphere">
-                        <div class="waveform-bars">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                    </div>
-                    <span class="orb-caption">Vocal Presence Initialized</span>
-                </div>
-                """)
+        with gr.Row(elem_classes=["action-dock"]):
+            mood_dropdown = gr.Dropdown(
+                choices=["random"] + list(MOODS),
+                value="random",
+                label="",
+                elem_id="mood-selector",
+            )
+            reset_btn = gr.Button("Reset", variant="secondary", elem_id="reset-btn")
 
-                telemetry_display = gr.HTML(
-                    render_telemetry_hud("Neutral", 1.0, "Ready"),
-                )
+    with gr.Column(elem_classes=["transcript-card"]):
+        gr.HTML("""
+        <div class="transcript-header">
+            <span>Live Transcript & Captions</span>
+            <span>Full Duplex</span>
+        </div>
+        """)
 
-                audio_input = gr.Audio(
-                    sources=["microphone"],
-                    type="filepath",
-                    label="Voice Capture",
-                    elem_id="audio-input-block",
-                )
-
-                mood_dropdown = gr.Dropdown(
-                    choices=["random"] + list(MOODS),
-                    value="random",
-                    label="Persona Cadence",
-                    elem_id="mood-selector",
-                )
-
-                send_btn = gr.Button("Transmit Speech", variant="primary", elem_id="send-btn")
-                reset_btn = gr.Button("Reset Session", variant="secondary", elem_id="reset-btn")
-
-        with gr.Column(scale=7, min_width=380):
-            with gr.Group(elem_id="chatbot-panel"):
-                gr.HTML('<p class="card-title">Live Conversation Stream</p>')
-
-                chatbot = gr.Chatbot(
-                    label="",
-                    height=480,
-                    show_label=False,
-                    elem_id="chat-stream",
-                )
-
-                audio_output = gr.Audio(
-                    label="Marin Audio Channel",
-                    autoplay=True,
-                    type="filepath",
-                    elem_id="audio-output-block",
-                )
+        chatbot = gr.Chatbot(
+            label="",
+            height=280,
+            show_label=False,
+            type="messages",
+            elem_id="chat-stream",
+        )
 
     gr.HTML("""
-    <div class="footer-bar">
-        <span>Marin AI Engine &nbsp;·&nbsp; Enterprise Voice System</span>
-        <span>Subhamoy Datta &nbsp;·&nbsp; Architecture v1.2</span>
+    <div class="footer-credits">
+        Marin v1.2 &nbsp;·&nbsp; Subhamoy Datta &nbsp;·&nbsp; Built with Whisper · emotion2vec · Gemini · Edge-TTS
     </div>
     """)
 
-    send_btn.click(
-        fn=chat_pipeline,
-        inputs=[audio_input, chatbot, mood_dropdown, msg_state],
-        outputs=[chatbot, audio_output, telemetry_display, msg_state],
+    webrtc_stream.stream(
+        fn=ReplyOnPause(conversation_loop, can_interrupt=True),
+        inputs=[webrtc_stream, mood_dropdown, chatbot],
+        outputs=[webrtc_stream],
+        time_limit=900,
     )
-    audio_input.stop_recording(
-        fn=chat_pipeline,
-        inputs=[audio_input, chatbot, mood_dropdown, msg_state],
-        outputs=[chatbot, audio_output, telemetry_display, msg_state],
+
+    webrtc_stream.on_additional_outputs(
+        fn=lambda chat, hud: (chat, hud),
+        inputs=[chatbot, telemetry_display],
+        outputs=[chatbot, telemetry_display],
     )
+
     reset_btn.click(
-        fn=reset_chat,
+        fn=reset_session,
         inputs=[],
-        outputs=[chatbot, audio_output, telemetry_display, msg_state],
+        outputs=[chatbot, telemetry_display],
     )
 
 if __name__ == "__main__":
