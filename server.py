@@ -16,6 +16,10 @@ for p in (ROOT_DIR, SRC_DIR, BACKEND_DIR):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from marin.config import ensure_gemini_api_key
+
+ensure_gemini_api_key(interactive=True)
+
 from llm.marin_persona import MOODS, MOOD_VOICE_PRESETS
 
 try:
@@ -109,6 +113,13 @@ async def voice_websocket_endpoint(websocket: WebSocket):
 frontend_dist = os.path.join(ROOT_DIR, "frontend", "dist")
 if os.path.exists(frontend_dist):
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
+else:
+    print(
+        "Marin web UI not found in this install. The API is still live at /api/health. "
+        "The UI ships inside the wheel - reinstall to get it, or run "
+        "`npm --prefix frontend run build` in a source checkout.",
+        file=sys.stderr,
+    )
 
 if __name__ == "__main__":
     import uvicorn

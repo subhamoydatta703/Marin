@@ -71,3 +71,7 @@ develop-eggs/
 
 
 /.vscode
+
+# Frontend production build is committed and shipped inside the installable wheel
+!frontend/dist/
+!frontend/dist/**

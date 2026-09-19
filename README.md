@@ -143,11 +143,50 @@ marin/
 
 ## Environment Setup
 
-Create a `.env` file in the project root directory:
+Each person who runs Marin uses **their own** Gemini key. Marin never ships a key in the package.
+
+1. Create a key at [Google AI Studio](https://aistudio.google.com/apikey).
+2. Either:
+   - Copy `.env.example` to `.env` in the project folder and paste the key, or
+   - Run Marin once; it will ask for the key and save it to `~/.marin/.env` (on Windows: `C:\Users\<you>\.marin\.env`).
 
 ```env
-GEMINI_API_KEY="your-gemini-api-key-here"
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
+
+---
+
+## Install as a package
+
+Marin installs as a normal Python package. Requirements for every install:
+**Python 3.12 or 3.13**, [ffmpeg](https://ffmpeg.org/download.html) on PATH, and a microphone.
+
+From this repo (after `uv sync`):
+
+```bash
+uv run marin           # voice call in the terminal (asks for YOUR Gemini key once)
+uv run marin web       # browser UI at http://127.0.0.1:8000
+```
+
+From GitHub (their own machine, their own key) - pip builds the wheel on their
+machine, so `git` plus the requirements above apply:
+
+```bash
+pip install "git+https://github.com/subhamoydatta703/Marin.git@feature/frontend-backend"
+marin        # voice call in the terminal (asks for YOUR Gemini key once)
+marin web    # browser UI at http://127.0.0.1:8000 (the UI ships inside the wheel)
+```
+
+First launch: paste a Gemini key from https://aistudio.google.com/apikey. Marin
+stores it in `~/.marin/.env`. The first run also downloads the Whisper (STT) and
+FunASR emotion models. No NVIDIA GPU? Marin falls back to CPU automatically.
+
+Pip install notes:
+
+- **Python 3.12 or 3.13 only** - pip refuses anything else at install time via `requires-python`.
+- Plan for **~4-7 GB of downloads** (PyTorch + CUDA runtime libraries on Linux).
+- The wheel pins the exact dependency versions from `uv.lock`, so `pip install` and `uv sync` resolve the same tested set; use `uv sync --frozen` for the full bit-for-bit lock.
+- The React UI ships prebuilt as `frontend/dist` inside the wheel. If you change the UI, rebuild and commit it: `cd frontend && npm run build && git add frontend/dist`.
 
 ---
 
