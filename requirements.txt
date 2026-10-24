@@ -3,7 +3,7 @@ torchaudio
 transformers
 google-genai
 pydantic
-edge-tts
+edge-tts>=7.3.0
 funasr
 modelscope
 onnxruntime

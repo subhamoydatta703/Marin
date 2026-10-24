@@ -247,11 +247,16 @@
 /* Telemetry HUD */
 .hud-container {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   margin: 2px 0 6px;
 }
+.latency-readout { margin-top: 5px; font-size: 0.65rem; color: var(--text-muted); }
 
 .hud-pill {
+  flex-wrap: wrap;
+  justify-content: center;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -295,6 +300,7 @@
 }
 
 .hud-state {
+  overflow-wrap: anywhere;
   font-weight: 700;
   letter-spacing: 0.04em;
   transition: color 0.2s ease;
@@ -303,6 +309,7 @@
 /* Control Dock */
 .control-dock {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 12px;
   background: var(--bg-surface);
@@ -383,6 +390,24 @@
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.15);
 }
+
+.voice-settings {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  padding: 12px 14px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.voice-settings summary { cursor: pointer; }
+.settings-content { display: grid; gap: 10px; padding-top: 14px; }
+.settings-content p { font-size: 0.72rem; color: var(--text-muted); }
+.settings-content textarea { resize: vertical; cursor: text; }
+.voice-choice, .personality-range { display: flex; align-items: center; gap: 12px; }
+.voice-choice select { flex: 1; min-width: 0; }
+.personality-range { justify-content: space-between; }
+.personality-range input { width: 60%; accent-color: #60a5fa; }
+.reset-btn:disabled, .dock-select:disabled { opacity: 0.5; cursor: default; }
 
 /* Transcript Card */
 .transcript-card {

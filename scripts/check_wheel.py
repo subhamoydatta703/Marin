@@ -21,6 +21,7 @@ REQUIRED = [
     "backend/audio_service.py",
     "backend/conversation_service.py",
     "backend/websocket_handler.py",
+    "backend/streaming_service.py",
     "llm/__init__.py",
     "llm/gemini_answer.py",
     "llm/marin_persona.py",
@@ -28,9 +29,11 @@ REQUIRED = [
     "speech_recognition/__init__.py",
     "speech_to_text/__init__.py",
     "text_to_speech/__init__.py",
+    "text_to_speech/speech_text.py",
     "validation/__init__.py",
     "interruption/__init__.py",
     "frontend/dist/index.html",
+    "frontend/dist/microphone-worklet.js",
 ]
 
 # Entry points must wire up the `marin` console command.

@@ -18,6 +18,7 @@ export default function App() {
     startCall,
     endCall,
     resetSession,
+    settings, setSettings, memory, setMemory, summary, forgetMemory, previewVoice, interruptReply,
   } = useVoiceChat();
 
   return (
@@ -33,6 +34,7 @@ export default function App() {
           volumeLevel={volumeLevel}
           onStart={startCall}
           onEnd={endCall}
+          allowInterruptions={settings.allowInterruptions}
         />
 
         {/* Real-Time Vocal Emotion HUD */}
@@ -44,10 +46,14 @@ export default function App() {
           setMood={setMood}
           onReset={resetSession}
           disabled={callState === 'speaking' || callState === 'thinking'}
+          active={['connecting', 'listening', 'thinking', 'speaking'].includes(callState)}
+          settings={settings} setSettings={setSettings} memory={memory} setMemory={setMemory}
+          summary={summary} onForget={forgetMemory} onPreview={previewVoice}
+          onInterrupt={interruptReply}
         />
 
         {/* Live Transcript & Captions Panel */}
-        <Transcript messages={messages} callState={callState} />
+        <Transcript messages={messages} allowInterruptions={settings.allowInterruptions} />
       </main>
 
       {/* Footer Credits */}

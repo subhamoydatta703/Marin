@@ -1,5 +1,12 @@
 import argparse
+import os
 import sys
+
+# Prevent OpenBLAS/OMP from attempting massive thread-pool allocations on multi-core systems
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 import threading
 import time
 import urllib.request

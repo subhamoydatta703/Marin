@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { MessageSquare, Bot, User } from 'lucide-react';
 
-export default function Transcript({ messages, callState }) {
-  const bottomRef = useRef(null);
+export default function Transcript({ messages, allowInterruptions }) {
+  const bodyRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [messages]);
 
   return (
@@ -16,11 +16,11 @@ export default function Transcript({ messages, callState }) {
           <span>Live Transcript & Captions</span>
         </div>
         <div className="header-right">
-          <span>Full Duplex</span>
+          <span>{allowInterruptions ? 'Full Duplex' : 'Voice Call'}</span>
         </div>
       </div>
 
-      <div className="transcript-body">
+      <div className="transcript-body" ref={bodyRef}>
         {messages.length === 0 ? (
           <div className="empty-transcript">
             <p className="empty-hint">
@@ -41,7 +41,7 @@ export default function Transcript({ messages, callState }) {
                   {msg.role === 'user' && msg.emotion && (
                     <div className="message-meta">
                       <span className="meta-tone">Tone: {msg.emotion}</span>
-                      {msg.confidence && (
+                      {msg.confidence != null && (
                         <span className="meta-conf">{Math.round(msg.confidence * 100)}%</span>
                       )}
                     </div>
@@ -50,7 +50,6 @@ export default function Transcript({ messages, callState }) {
                 </div>
               </div>
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
       </div>

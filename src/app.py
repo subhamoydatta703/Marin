@@ -1,3 +1,8 @@
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 import threading
 import re
 import datetime
@@ -29,7 +34,14 @@ def main():
     hour = datetime.datetime.now().hour
     time_of_day = "morning" if 5 <= hour < 12 else "afternoon" if 12 <= hour < 17 else "evening" if 17 <= hour < 21 else "night"
 
-    current_mood = random.choice(list(MOODS))
+    from speech_to_text.stt_conversion import get_transcriber
+    from speech_recognition.emotion import get_emotion_model
+    print("Loading speech models before the call...")
+    get_transcriber()
+    get_emotion_model()
+    current_mood = "soft"
+    mood_state = {}
+    memory = ""
     prompt = build_prompt(mood=current_mood, time_of_day=time_of_day)
     rate, pitch = MOOD_VOICE_PRESETS[current_mood]
     print(f"Call started with Marin | Mood: {current_mood.upper()} | Time: {time_of_day}")
@@ -53,6 +65,7 @@ def main():
             user_emotion=emotion,
             emotion_score=score,
             user_text=user_text,
+            state=mood_state,
         )
         if next_mood != current_mood:
             current_mood = next_mood
@@ -69,6 +82,7 @@ def main():
         msgHistory.append(Message(role="user", text=user_text, emotion_type=emotion, emotion_score=score))
         print("Marin is thinking....")
         try:
+            prompt = build_prompt(mood=current_mood, time_of_day=time_of_day, memory=memory)
             ans = answerGeneration(msgHistory, system_prompt=prompt)
         except Exception as exc:
             print(f"LLM error: {exc}")
@@ -80,8 +94,15 @@ def main():
             continue
 
         msgHistory.append(Message(role="model", text=ans))
+        if len(msgHistory) > 14:
+            removed = msgHistory[:-14]
+            memory = (memory + "\n" + "\n".join(f"{m.role}: {m.text[:300]}" for m in removed))[-4000:]
+            del msgHistory[:-14]
         print("Marin: ", ans)
         speak_in_background(ans, rate=rate, pitch=pitch)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        stop_speaking()

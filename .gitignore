@@ -75,3 +75,10 @@ develop-eggs/
 # Frontend production build is committed and shipped inside the installable wheel
 !frontend/dist/
 !frontend/dist/**
+
+
+/video
+
+# Browser regression artifacts
+frontend/test-results/
+frontend/playwright-report/
