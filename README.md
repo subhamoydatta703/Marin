@@ -249,3 +249,76 @@ To put React on Hugging Face later: **Settings → Hardware → CPU Basic** (or 
 - **Hugging Face Space**: [https://huggingface.co/spaces/subhamoy99/marin-ai](https://huggingface.co/spaces/subhamoy99/marin-ai)
 - **Vercel Frontend**: Connect your GitHub repo to Vercel with Root Directory set to `frontend/`.
 
+
+## Regression checks
+
+After installing Python and frontend dependencies, run:
+
+```powershell
+.venv/Scripts/python.exe -m unittest discover -s tests -v
+npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run build
+```
+
+These checks cover API validation, WebSocket interruption, audio conversion,
+and browser call cleanup using mocked microphones and remote services. A real
+microphone, model downloads, and Gemini/Edge-TTS connectivity still need a live
+voice-call check. Rebuild `frontend/dist` after frontend changes so `marin web`
+serves the updated UI.
+
+## Current voice pipeline and controls
+
+The browser call now uses AudioWorklet capture where supported, a 300 ms input
+pre-roll, sustained-speech interruption detection, and a 900 ms end-of-speech
+pause (adjustable to 600 or 1400 ms). It sends 16 kHz mono WAV audio. Whisper and emotion recognition run
+concurrently after both models have loaded at server startup.
+
+Responses stream as complete speech segments over NDJSON. The browser decodes
+and schedules those segments on one Web Audio clock; interruptions cancel the
+request and stop queued audio. Speaker mode is the default and lets replies
+finish to avoid self-interruption from speaker echo. Use the Interrupt button
+to stop a reply, or choose headphone mode for hands-free barge-in.
+Speaker mode discards microphone input while a reply is being prepared or
+played, including pauses between segments and an 800 ms echo tail. Captions
+appear as each speech segment starts. Very quiet recordings and isolated
+clicks are rejected before recognition; this energy check is not a complete
+speech detector and cannot reject every kind of background sound.
+Edge-TTS is pinned to 7.3.0. Indian English
+Neerja is the default voice. The Voice, personality & memory panel offers voice
+previews, three accents, warmth/teasing/curiosity controls, and reply length.
+
+Speech text uses standard spelling. Mood changes use repeated high-confidence
+signals and a cooldown, with smaller rate and pitch adjustments. Earlier
+conversation context is retained as bounded verbatim snippets, not invented
+facts. Personal notes are editable, saved in this browser, and sent with your
+next conversation. Reset clears the current conversation; Forget memory clears
+both notes and conversation. Automatic conversation notes last for this page
+session.
+
+Optional environment settings:
+
+```env
+MARIN_STT_MODEL=openai/whisper-small.en
+MARIN_LLM_MODEL=gemini-3.5-flash-lite
+```
+
+The default recognition model is English-only. It does not guarantee accurate
+recognition of every accent, name, or recording. For a multilingual model set
+`MARIN_STT_MODEL` accordingly; `MARIN_STT_LANGUAGE` defaults to `english`.
+
+Additional checks:
+
+```powershell
+npm --prefix frontend run test:browser
+.venv/Scripts/python.exe scripts/diagnose_reply.py --stream
+```
+
+Browser tests use installed Microsoft Edge and synthetic microphone input;
+they do not record your microphone. The diagnostic command makes live Gemini
+and Edge-TTS requests using the configured key and saves generated audio in
+`.marin-tmp/voice-check`. Its timing reports server processing time before the
+first audio segment, excluding microphone silence detection and network playback.
+
+Native speech-to-speech providers remain an alternative architecture; this
+change keeps the existing local recognition + Gemini + Edge-TTS pipeline.

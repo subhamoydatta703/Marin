@@ -1,8 +1,8 @@
 import React from 'react';
-import { Mic, MicOff, PhoneOff, Loader2 } from 'lucide-react';
+import { Mic, Loader2 } from 'lucide-react';
 
-export default function VoiceOrb({ callState, volumeLevel, onStart, onEnd }) {
-  const isLive = callState === 'listening' || callState === 'speaking' || callState === 'thinking';
+export default function VoiceOrb({ callState, volumeLevel, onStart, onEnd, allowInterruptions }) {
+  const isLive = ['connecting', 'listening', 'speaking', 'thinking'].includes(callState);
   const isThinking = callState === 'thinking';
   const isSpeaking = callState === 'speaking';
   const isListening = callState === 'listening';
@@ -85,8 +85,8 @@ export default function VoiceOrb({ callState, volumeLevel, onStart, onEnd }) {
         </h2>
         <p className="stage-hint">
           {isLive
-            ? 'Speak naturally or interrupt anytime. Say "bye" to end.'
-            : 'Tap the button to start. Hands-free conversation with barge-in.'}
+            ? allowInterruptions ? 'Speak naturally or interrupt anytime. Say "bye" to end.' : 'Speak after Marin finishes, or tap Interrupt. Say "bye" to end.'
+            : 'Tap the button to start a hands-free conversation.'}
         </p>
       </div>
     </div>

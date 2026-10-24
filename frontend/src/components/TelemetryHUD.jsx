@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function TelemetryHUD({ telemetry, callState }) {
   const emotion = telemetry.emotion ? telemetry.emotion.charAt(0).toUpperCase() + telemetry.emotion.slice(1) : 'Neutral';
-  const confidence = Math.round((telemetry.confidence || 1.0) * 100);
+  const confidence = Math.round((telemetry.confidence ?? 1.0) * 100);
 
   const getStatusColor = () => {
     switch (callState) {
@@ -49,6 +49,9 @@ export default function TelemetryHUD({ telemetry, callState }) {
           {displayStatus}
         </span>
       </div>
+      {telemetry.timings?.first_audio_ms != null && <span className="latency-readout">
+        First audio: {(telemetry.timings.first_audio_ms / 1000).toFixed(1)}s
+      </span>}
     </div>
   );
 }

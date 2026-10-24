@@ -1,5 +1,4 @@
 import React from 'react';
-import { Sparkles, Radio } from 'lucide-react';
 
 export default function Navbar({ callState }) {
   const isLive = callState === 'listening' || callState === 'speaking' || callState === 'thinking';

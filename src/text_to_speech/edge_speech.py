@@ -1,7 +1,8 @@
-# Edge-TTS expressive voice engine for Marin with sentence-pipelined playback and barge-in support.
+# Edge-TTS voice engine with consistent per-reply synthesis and cancellable playback.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import queue
 import re
 import shutil
@@ -12,28 +13,18 @@ from typing import Iterator
 import edge_tts
 
 # Default and fallback voice definitions
-DEFAULT_VOICE = "en-US-AvaMultilingualNeural"
-FALLBACK_VOICE = "en-IN-NeerjaExpressiveNeural"
+DEFAULT_VOICE = "en-IN-NeerjaNeural"
 
-# Voice presets (rate, pitch) matching each mood in llm.marin_persona
-MOOD_VOICE_PRESETS: dict[str, tuple[str, str]] = {
-    "clingy": ("+4%", "+8Hz"),
-    "drained": ("-8%", "-4Hz"),
-    "hyper": ("+14%", "+14Hz"),
-    "grumpy": ("-2%", "-2Hz"),
-    "mischievous": ("+8%", "+6Hz"),
-    "distracted": ("-4%", "+0Hz"),
-    "soft": ("-6%", "+2Hz"),
-    "restless": ("+6%", "+4Hz"),
-}
+from llm.marin_persona import MOOD_VOICE_PRESETS
+from text_to_speech.speech_text import clean_speech_text
 
-# Baseline voice parameters when no mood is supplied
-BASE_RATE = "+6%"
-BASE_PITCH = "+6Hz"
+BASE_RATE = "+0%"
+BASE_PITCH = "+0Hz"
 
 # Global process and lock for barge-in audio interruption
 _stop_flag = threading.Event()
 _active_proc: subprocess.Popen | None = None
+_active_stop: threading.Event | None = None
 _proc_lock = threading.Lock()
 
 
@@ -41,6 +32,8 @@ def stop_speaking() -> None:
     # Cut playback off immediately. Safe to call from any thread
     _stop_flag.set()
     with _proc_lock:
+        if _active_stop is not None:
+            _active_stop.set()
         if _active_proc and _active_proc.poll() is None:
             try:
                 _active_proc.kill()
@@ -50,7 +43,7 @@ def stop_speaking() -> None:
 
 def is_speaking() -> bool:
     with _proc_lock:
-        return _active_proc is not None and _active_proc.poll() is None
+        return _active_stop is not None and not _active_stop.is_set()
 
 
 # text cleaning
@@ -65,35 +58,7 @@ _MAX_REPEAT = 3
 
 
 def _clean_text(text: str) -> str:
-    """Normalise LLM output so Edge-TTS speaks it smoothly."""
-    # Strip action markers and bracketed tags: *laughs*, [sighs]
-    text = re.sub(r"\*[^*]*\*", " ", text)
-    text = re.sub(r"\[[^\]]*\]", " ", text)
-
-    # Strip markdown emphasis and bullets that sometimes leak through
-    text = re.sub(r"^\s*[-*\u2022]\s+", "", text, flags=re.MULTILINE)
-    text = re.sub(r"[`_#>]", "", text)
-
-    # Ellipses cause ~700ms dead air in Edge-TTS. A comma is a breath instead.
-    text = re.sub(r"\.{2,}|\u2026", ", ", text)
-
-    # Em/en dashes used as pauses -> comma. Hyphens BETWEEN letters or digits are
-    # left alone so "well-known" and "-5" survive.
-    text = re.sub(r"\s*[\u2014\u2013]\s*", ", ", text)
-    text = re.sub(r"(?<=\s)-(?=\s)", ",", text)
-    text = re.sub(r"(?<![\w])-(?=\s)|(?<=\s)-(?![\w])", " ", text)
-
-    # Cap runaway elongations so the voice doesn't choke on "noooooooooo"
-    text = re.sub(r"(\w)\1{%d,}" % _MAX_REPEAT, r"\1" * _MAX_REPEAT, text)
-
-    # Collapse comma pileups and stray whitespace
-    text = re.sub(r"(,\s*){2,}", ", ", text)
-    text = re.sub(r"\s+([,.!?])", r"\1", text)
-    text = re.sub(r"\s+", " ", text).strip()
-
-    # Trailing comma before end of speech sounds unfinished
-    text = re.sub(r",\s*$", ".", text)
-    return text
+    return clean_speech_text(text)
 
 
 def _split_sentences(text: str, min_len: int = 24) -> list[str]:
@@ -139,6 +104,7 @@ async def _produce(
     rate: str,
     pitch: str,
     out: queue.Queue,
+    stop_event: threading.Event,
 ) -> None:
     """
     Synthesize sentences in order, pushing each completed blob onto the queue.
@@ -149,22 +115,24 @@ async def _produce(
     try:
         pending = asyncio.create_task(_synthesize(chunks[0], voice, rate, pitch))
         for nxt in chunks[1:]:
-            if _stop_flag.is_set():
+            if stop_event.is_set():
                 break
             blob = await pending
             pending = asyncio.create_task(_synthesize(nxt, voice, rate, pitch))
             out.put(blob)
-        if not _stop_flag.is_set():
+        if not stop_event.is_set():
             out.put(await pending)
         else:
             pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pending
     except Exception as exc:
         out.put(exc)
     finally:
         out.put(None)  # sentinel
 
 
-def _play(out: queue.Queue) -> None:
+def _play(out: queue.Queue, stop_event: threading.Event) -> None:
     """Feed buffered sentences into a single persistent ffplay process."""
     global _active_proc
 
@@ -175,6 +143,8 @@ def _play(out: queue.Queue) -> None:
         raise first
 
     with _proc_lock:
+        if stop_event.is_set():
+            return
         _active_proc = subprocess.Popen(
             ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-i", "pipe:0"],
             stdin=subprocess.PIPE,
@@ -186,7 +156,7 @@ def _play(out: queue.Queue) -> None:
         while blob is not None:
             if isinstance(blob, Exception):
                 raise blob
-            if _stop_flag.is_set():
+            if stop_event.is_set():
                 break
             try:
                 proc.stdin.write(blob)
@@ -201,23 +171,25 @@ def _play(out: queue.Queue) -> None:
         except Exception:
             pass
         try:
-            proc.wait(timeout=30)
+            proc.wait()
         except Exception:
             proc.kill()
         with _proc_lock:
-            _active_proc = None
+            if _active_proc is proc:
+                _active_proc = None
 
 
-async def _speak_async(text: str, voice: str, rate: str, pitch: str) -> None:
-    chunks = _split_sentences(_clean_text(text))
+async def _speak_async(text: str, voice: str, rate: str, pitch: str, stop_event: threading.Event) -> None:
+    cleaned = _clean_text(text)
+    chunks = [cleaned] if cleaned else []
     if not chunks:
         return
 
     out: queue.Queue = queue.Queue()
     loop = asyncio.get_running_loop()
-    producer = asyncio.create_task(_produce(chunks, voice, rate, pitch, out))
+    producer = asyncio.create_task(_produce(chunks, voice, rate, pitch, out, stop_event))
     try:
-        await loop.run_in_executor(None, _play, out)
+        await loop.run_in_executor(None, _play, out, stop_event)
     finally:
         await producer
 
@@ -248,17 +220,24 @@ def speak_edge(
     rate = rate or preset_rate
     pitch = pitch or preset_pitch
 
+    global _active_stop
+    stop_event = threading.Event()
+    with _proc_lock:
+        if _active_stop is not None:
+            _active_stop.set()
+        if _active_proc is not None and _active_proc.poll() is None:
+            _active_proc.kill()
+        _active_stop = stop_event
     _stop_flag.clear()
     try:
-        asyncio.run(_speak_async(text, voice, rate, pitch))
-    except Exception as exc:
-        if _stop_flag.is_set():
-            return  # interrupted on purpose, not a failure
-        print(f"[TTS error on {voice}]: {exc} - retrying with fallback voice")
-        try:
-            asyncio.run(_speak_async(text, FALLBACK_VOICE, rate, pitch))
-        except Exception as exc2:
-            print(f"[TTS fallback also failed]: {exc2}")
+        asyncio.run(_speak_async(text, voice, rate, pitch, stop_event))
+    except Exception:
+        if not stop_event.is_set():
+            raise
+    finally:
+        with _proc_lock:
+            if _active_stop is stop_event:
+                _active_stop = None
 
 
 def speak_stream(token_iter: Iterator[str], **kwargs) -> None:
